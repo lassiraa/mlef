@@ -8,7 +8,9 @@ import sys
 import tempfile
 import threading
 from datetime import UTC, datetime
+from io import BufferedReader
 from pathlib import Path
+from typing import BinaryIO, TextIO
 from uuid import uuid4
 
 BASE_IMAGE = "python:3.12-slim"
@@ -18,7 +20,7 @@ def now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def save(path: Path, data: dict) -> None:
+def save(path: Path, data: dict[str, object]) -> None:
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     temporary.replace(path)
@@ -71,7 +73,9 @@ def source_files(root: Path, script: Path, includes: list[Path]) -> list[Path]:
     return selected
 
 
-def docker(arguments: list[str], log, *, check: bool = True) -> subprocess.CompletedProcess:
+def docker(
+    arguments: list[str], log: BinaryIO, *, check: bool = True
+) -> subprocess.CompletedProcess[bytes]:
     try:
         result = subprocess.run(
             ["docker", *arguments],
@@ -84,7 +88,7 @@ def docker(arguments: list[str], log, *, check: bool = True) -> subprocess.Compl
         if check:
             raise
         log.write((str(error) + "\n").encode("utf-8"))
-        result = subprocess.CompletedProcess(["docker", *arguments], 1)
+        result = subprocess.CompletedProcess[bytes](["docker", *arguments], 1)
     log.flush()
     if check and result.returncode:
         raise RuntimeError(
@@ -93,10 +97,12 @@ def docker(arguments: list[str], log, *, check: bool = True) -> subprocess.Compl
     return result
 
 
-def stream_process(process: subprocess.Popen, run_dir: Path, name: str, log) -> int:
-    errors = []
+def stream_process(
+    process: subprocess.Popen[bytes], run_dir: Path, name: str, log: BinaryIO
+) -> int:
+    errors: list[OSError] = []
 
-    def copy(source, path: Path, terminal) -> None:
+    def copy(source: BufferedReader, path: Path, terminal: TextIO) -> None:
         try:
             with path.open("wb") as destination:
                 while chunk := source.read1(65536):
@@ -157,19 +163,19 @@ def run(
     artifacts.mkdir(parents=True)
     for filename in ["stdout.log", "stderr.log", "runner.log"]:
         (run_dir / filename).touch()
-    metadata = {
+    command = ["python", script.as_posix(), *arguments]
+    warnings = ["Step 2: Git/environment provenance and locked dependencies are not captured yet."]
+    metadata: dict[str, object] = {
         "schema_version": 1,
         "id": run_id,
         "state": "preparing",
         "created_at": now(),
         "started_at": None,
         "finished_at": None,
-        "command": ["python", script.as_posix(), *arguments],
+        "command": command,
         "execution_exit_code": None,
         "error": None,
-        "warnings": [
-            "Step 2: Git/environment provenance and locked dependencies are not captured yet."
-        ],
+        "warnings": warnings,
         "outputs": [path.as_posix() for path in outputs],
     }
     save(run_dir / "run.json", metadata)
@@ -182,7 +188,7 @@ def run(
     result = 1
     with (run_dir / "runner.log").open("ab") as log:
         try:
-            if not shutil.which("docker"):
+            if shutil.which("docker") is None:
                 raise RuntimeError(
                     "Docker executable not found. Install Docker and start its engine."
                 )
@@ -195,12 +201,11 @@ def run(
                     destination = workspace / path
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(root / path, destination)
-                ownership = f"--chown={os.getuid()}:{os.getgid()} " if hasattr(os, "getuid") else ""
-                workspace_owner = (
-                    f"RUN chown {os.getuid()}:{os.getgid()} /workspace\n"
-                    if hasattr(os, "getuid")
-                    else ""
-                )
+                user = None
+                if hasattr(os, "getuid") and hasattr(os, "getgid"):
+                    user = f"{os.getuid()}:{os.getgid()}"
+                ownership = f"--chown={user} " if user is not None else ""
+                workspace_owner = f"RUN chown {user} /workspace\n" if user is not None else ""
                 (context / "Dockerfile").write_text(
                     f"FROM {BASE_IMAGE}\nWORKDIR /workspace\n"
                     f"COPY {ownership}workspace/ /workspace/\n{workspace_owner}",
@@ -221,22 +226,18 @@ def run(
                 "--volume",
                 f"{artifacts}:/outputs",
             ]
-            if hasattr(os, "getuid"):
-                create.extend(["--user", f"{os.getuid()}:{os.getgid()}"])
-            docker([*create, image, *metadata["command"]], log)
+            if user is not None:
+                create.extend(["--user", user])
+            docker([*create, image, *command], log)
             created = True
             # Do not allocate a TTY: Docker then preserves separate stdout/stderr streams.
             # Handle Ctrl+C in mlef; do not also deliver it to the attached Docker client.
-            process_options = (
-                {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-                if sys.platform == "win32"
-                else {"start_new_session": True}
-            )
             process = subprocess.Popen(
                 ["docker", "start", "--attach", name],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-                **process_options,
+                creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
+                start_new_session=sys.platform != "win32",
             )
             metadata.update(state="running", started_at=now())
             save(run_dir / "run.json", metadata)
@@ -292,18 +293,19 @@ def run(
                         )
                     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
                         result = 130 if cancelled else 1
+                        message = f"Could not collect output {output}: {error}"
                         metadata["error"] = {
                             "category": "collection",
-                            "message": f"Could not collect output {output}: {error}",
+                            "message": message,
                         }
-                        print(f"mlef: {metadata['error']['message']}", file=sys.stderr)
+                        print(f"mlef: {message}", file=sys.stderr)
                 if docker(["rm", "--force", name], log, check=False).returncode:
-                    metadata["warnings"].append(f"Container cleanup failed: {name}")
-            if shutil.which("docker"):
-                if docker(["image", "rm", image], log, check=False).returncode:
-                    metadata["warnings"].append(
-                        f"Image cleanup failed or image was not built: {image}"
-                    )
+                    warnings.append(f"Container cleanup failed: {name}")
+            if (
+                shutil.which("docker") is not None
+                and docker(["image", "rm", image], log, check=False).returncode
+            ):
+                warnings.append(f"Image cleanup failed or image was not built: {image}")
             metadata.update(
                 state="cancelled" if cancelled else "succeeded" if result == 0 else "failed",
                 finished_at=now(),

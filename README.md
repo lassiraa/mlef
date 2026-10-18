@@ -46,10 +46,16 @@ Development:
 python -m pip install -e ".[dev]"
 ruff check .
 ruff format --check .
+ty check
 python -m pytest -v
 ```
 
 Set `MLEF_TEST_DOCKER=1` to include real Docker integration checks. CI runs unit
 checks on Linux, macOS, and Windows and container checks on Linux.
+
+Ruff enforces formatting, imports, annotations (including tests), bug-risk checks,
+pytest conventions, and simplification rules. ty checks source, tests, and examples
+against Python 3.11 across platforms, with all diagnostics treated as errors.
+Both checks run in CI. Keep any necessary suppressions specific and explain them.
 
 Licensed under Apache-2.0; see [LICENSE](LICENSE).
