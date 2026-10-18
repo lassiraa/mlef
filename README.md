@@ -46,7 +46,7 @@ Development:
 python -m pip install -e ".[dev]"
 ruff check .
 ruff format --check .
-python -m unittest discover -s tests -v
+python -m pytest -v
 ```
 
 Set `MLEF_TEST_DOCKER=1` to include real Docker integration checks. CI runs unit
