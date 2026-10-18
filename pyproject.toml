@@ -21,7 +21,7 @@ classifiers = [
 mlef = "mlef.cli:main"
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "ruff>=0.9"]
+dev = ["pytest>=8", "ruff>=0.17.1", "ty>=0.0.89"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -32,6 +32,20 @@ testpaths = ["tests"]
 [tool.ruff]
 target-version = "py311"
 line-length = 100
+required-version = ">=0.17.1"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP"]
+select = ["A", "ANN", "B", "C4", "DTZ", "E", "F", "I", "N", "PIE", "PT", "RET", "RUF", "SIM", "UP"]
+
+[tool.ty.src]
+include = ["src", "tests", "examples"]
+
+[tool.ty.environment]
+python-version = "3.11"
+python-platform = "all"
+
+[tool.ty.rules]
+all = "error"
+
+[tool.ty.terminal]
+error-on-warning = true

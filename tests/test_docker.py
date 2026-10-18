@@ -6,7 +6,9 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
+from typing import BinaryIO
 
 import pytest
 
@@ -19,7 +21,9 @@ pytestmark = pytest.mark.skipif(
 )
 
 
-def test_nonroot_container_can_write_workspace_and_artifacts(project, monkeypatch):
+def test_nonroot_container_can_write_workspace_and_artifacts(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     init(project)
     (project / "train.py").write_text(
         "import os\nfrom pathlib import Path\n"
@@ -37,7 +41,9 @@ def test_nonroot_container_can_write_workspace_and_artifacts(project, monkeypatc
     assert (directory / "artifacts/value.txt").read_text() == "artifact"
 
 
-def test_success_failure_arguments_and_declared_outputs(project, cli):
+def test_success_failure_arguments_and_declared_outputs(
+    project: Path, cli: Callable[..., subprocess.CompletedProcess[str]]
+) -> None:
     cli("init")
     (project / "train.py").write_bytes(EXAMPLE.read_bytes())
     success = cli("run", "train.py", "--", "--accuracy", "0.95")
@@ -80,7 +86,9 @@ def test_success_failure_arguments_and_declared_outputs(project, cli):
     assert collection_errors[0]["execution_exit_code"] == 0
 
 
-def test_interrupt_handler_with_real_container(project, monkeypatch):
+def test_interrupt_handler_with_real_container(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     # Inject KeyboardInterrupt at the wait boundary to cover the handler on Windows too.
     init(project)
     (project / "wait.py").write_text(
@@ -88,30 +96,30 @@ def test_interrupt_handler_with_real_container(project, monkeypatch):
         "Path(os.environ['MLEF_OUTPUT_DIR'], 'partial.txt').write_text('saved')\n"
         "print('ready', flush=True)\ntime.sleep(120)\n"
     )
-    real_popen = subprocess.Popen
+    real_stream = runner.stream_process
 
-    def popen(command, *args, **kwargs):
-        process = real_popen(command, *args, **kwargs)
-        if command[:3] == ["docker", "start", "--attach"]:
-            original_wait = process.wait
-            interrupted = False
+    def interrupted_stream(
+        process: subprocess.Popen[bytes], run_dir: Path, name: str, log: BinaryIO
+    ) -> int:
+        original_wait = process.wait
+        interrupted = False
 
-            def wait(timeout=None):
-                nonlocal interrupted
-                if not interrupted:
-                    interrupted = True
-                    deadline = time.monotonic() + 30
-                    while not list((project / ".mlef/runs").glob("*/artifacts/partial.txt")):
-                        if time.monotonic() > deadline:
-                            raise RuntimeError("Container did not produce a partial output")
-                        time.sleep(0.1)
-                    raise KeyboardInterrupt
-                return original_wait(timeout)
+        def wait(timeout: float | None = None) -> int:
+            nonlocal interrupted
+            if not interrupted:
+                interrupted = True
+                deadline = time.monotonic() + 30
+                while not list((project / ".mlef/runs").glob("*/artifacts/partial.txt")):
+                    if time.monotonic() > deadline:
+                        raise RuntimeError("Container did not produce a partial output")
+                    time.sleep(0.1)
+                raise KeyboardInterrupt
+            return original_wait(timeout)
 
-            monkeypatch.setattr(process, "wait", wait)
-        return process
+        monkeypatch.setattr(process, "wait", wait)
+        return real_stream(process, run_dir, name, log)
 
-    monkeypatch.setattr(runner.subprocess, "Popen", popen)
+    monkeypatch.setattr(runner, "stream_process", interrupted_stream)
     assert runner.run(project, Path("wait.py"), [], [], []) == 130
     (directory,) = (project / ".mlef/runs").iterdir()
     metadata = json.loads((directory / "run.json").read_text())
@@ -122,7 +130,9 @@ def test_interrupt_handler_with_real_container(project, monkeypatch):
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="SIGINT delivery checked on POSIX CI")
-def test_cancellation_preserves_partial_outputs(project, cli):
+def test_cancellation_preserves_partial_outputs(
+    project: Path, cli: Callable[..., subprocess.CompletedProcess[str]]
+) -> None:
     cli("init")
     (project / "wait.py").write_text(
         "import os, time\nfrom pathlib import Path\n"
