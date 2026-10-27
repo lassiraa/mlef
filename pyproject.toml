@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlef"
-version = "0.1.0.dev0"
+version = "0.1.0rc1"
 description = "Run Python experiments in Docker and preserve their results."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -41,7 +41,7 @@ required-version = ">=0.17.1"
 select = ["A", "ANN", "B", "C4", "DTZ", "E", "F", "I", "N", "PIE", "PT", "RET", "RUF", "SIM", "UP"]
 
 [tool.ty.src]
-include = ["src", "tests", "examples"]
+include = ["src", "tests", "examples", "scripts", "benchmarks"]
 
 [tool.ty.environment]
 python-version = "3.11"

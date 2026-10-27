@@ -60,6 +60,8 @@ def normalize(root: Path, identifier: str) -> Result:
         )
         return result
     try:
+        if not metrics_path.is_file():
+            raise ValueError("metrics.json must be a regular file.")
         values = read_json(metrics_path)
         result.metrics = TypeAdapter(dict[str, int | float]).validate_python(values, strict=True)
         # validate_assignment also rejects non-finite float values.

@@ -23,6 +23,7 @@ def saved_run(
             "created_at": created,
             "command": ["python", "train.py"],
             "finished_at": None if state == "running" else created,
+            "execution_exit_code": 0 if state == "succeeded" else None,
         }
     )
     save(directory / "run.json", record)
@@ -48,6 +49,15 @@ def test_json_argument_errors_are_structured(capsys: pytest.CaptureFixture[str])
         main(["status", "--json"])
     assert error.value.code == 2
     assert json.loads(capsys.readouterr().out)["error"]["category"] == "arguments"
+
+
+def test_inconsistent_success_is_a_corrupt_record(project: Path) -> None:
+    path = saved_run(project) / "run.json"
+    record = json.loads(path.read_text())
+    record["execution_exit_code"] = 7
+    path.write_text(json.dumps(record))
+    with pytest.raises(ValueError, match="exit code zero"):
+        read_run(path)
 
 
 @pytest.mark.parametrize(

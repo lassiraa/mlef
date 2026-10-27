@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 from uuid import uuid4
 
@@ -43,6 +44,8 @@ def saved(
             "started_at": "2026-01-01T00:00:01Z",
             "finished_at": "2026-01-01T00:00:03Z",
             "command": ["python", "train.py"],
+            "execution_exit_code": 0 if state == "succeeded" else 7,
+            "execution_seconds": 2.0,
             "experiment": experiment,
         }
     )
@@ -150,6 +153,7 @@ def test_missing_legacy_and_zero_baseline(project: Path) -> None:
     "content",
     [
         '{"unknown": 1}',
+        '{"schema_version":true}',
         '{"seeds":{"seed":true}}',
         '{"parameters":{"x":NaN}}',
         '{"parameters":{"x":1e999}}',
@@ -181,3 +185,13 @@ def test_json_comparison_and_bounded_summary(
     assert len(json.loads(capsys.readouterr().out)["metrics"]) == 25
     assert main(["compare", first, second]) == 0
     assert "5 metrics omitted" in capsys.readouterr().out
+
+
+def test_named_pipe_metrics_are_invalid_without_reading(project: Path) -> None:
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("POSIX named pipes are unavailable on this host")
+    identifier = saved(project, None)
+    os.mkfifo(project / ".mlef/runs" / identifier / "artifacts/metrics.json")
+    result = normalize(project, identifier)
+    assert result.evidence_status == "invalid"
+    assert "regular file" in result.diagnostics[0].message

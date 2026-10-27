@@ -1,0 +1,6 @@
+include README.md LICENSE uv.lock
+recursive-include examples *.py *.toml *.lock *.json *.csv
+recursive-include schemas *.json
+recursive-include benchmarks *.py
+recursive-include scripts *.py
+recursive-include tests *.py

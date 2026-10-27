@@ -4,8 +4,10 @@ Run a Python experiment in Docker and keep its logs and output files together.
 Early development: the local runner saves source, Git and environment provenance
 and installs supported locked dependencies.
 
-Requires Python 3.11+, Git, and Docker running Linux containers. Host targets are
-Linux, macOS, and Windows; platform validation is still in progress.
+Release candidate: `0.1.0rc1`. Requires Python 3.11-3.14, Git, uv 0.13.6 for
+development, and Docker running Linux containers. CLI and distribution checks run
+on Linux, macOS, and Windows. Full container integration is validated on Linux;
+Windows/macOS Docker execution remains a preview until equivalent host checks pass.
 
 ```text
 uv tool install .
@@ -111,6 +113,16 @@ mlef init
 mlef run train.py
 ```
 
+For a complete baseline/candidate workflow, copy `examples/tabular` into a fresh
+directory, run `git init` there, then run `python demo.py` with the installed
+`mlef` command on PATH. It records the actual data hash, runs a majority-class
+baseline, fills the candidate's parent ID from that run, evaluates a
+training-selected version threshold on the same fixed validation rows, compares
+the results, and retrieves candidate metrics. The toy validation accuracy changes
+from 0.5 to 1.0. This is a reproducible smoke example, not evidence of general ML
+or agent performance. `event_count` is deliberately irrelevant; the script fits
+the threshold on training rows only.
+
 To manually repeat saved inputs after editing the working tree, create a fresh
 build directory containing `workspace/` extracted from the saved `source.tar.gz`
 and the saved `Dockerfile`. Verify the recorded SHA-256 values first. Archives
@@ -133,11 +145,86 @@ uv run --locked --extra dev pytest -v
 ```
 
 Set `MLEF_TEST_DOCKER=1` to include real Docker integration checks. CI runs unit
-checks on Linux, macOS, and Windows and container checks on Linux.
+checks on Linux, macOS, and Windows, container checks on Linux, and clean wheel and
+sdist installs on all three hosts. The container suite includes failure,
+cancellation, declared outputs, concurrent-run isolation, locked installation,
+saved-recipe rebuild, malformed optional metrics, required-result storage failure,
+and the complete tabular run/inspect/compare/retrieve loop.
 
 Ruff enforces formatting, imports, annotations (including tests), bug-risk checks,
 pytest conventions, and simplification rules. ty checks source, tests, and examples
 against Python 3.11 across platforms, with all diagnostics treated as errors.
 Both checks run in CI. Keep any necessary suppressions specific and explain them.
+
+Versioned JSON Schemas are in [schemas](schemas). The core contracts are
+[run v2](schemas/run-v2.schema.json), [experiment v1](schemas/experiment-v1.schema.json),
+[result v1](schemas/result-v1.schema.json), [environment v1](schemas/environment-v1.schema.json),
+and [comparison v1](schemas/comparison-v1.schema.json). Regenerate them with
+`uv run --locked --extra dev python scripts/export_schemas.py`; CI checks that the
+committed copies match the Pydantic contracts. `run.json`, `environment.json` and
+`result.json` are saved atomically. Run directories and artifacts are authoritative;
+there is no database, hosted backend, daemon or mandatory LLM service.
+
+| Exit code | Meaning |
+| --- | --- |
+| 0 | Successful execution or query, including incompatible/unknown comparisons. |
+| 1 | Execution, preparation, storage, collection, or query/retrieval failure. |
+| 2 | Invalid arguments, experiment metadata, or project configuration. |
+| 130 | Foreground run cancelled by the user. |
+
+| Symptom | Resolution |
+| --- | --- |
+| Project root or initialization error | Run from the Git root; use `git init` and `mlef init`. |
+| Docker engine unavailable | Start a Linux-container engine and check `docker info`. Offline queries still work. |
+| Missing/stale lock | Intentionally run `uv lock` in the experiment project, then inspect and commit the dependency changes. |
+| Unsupported dependency input | Use a single pyproject/uv.lock project with compatible registry wheels. |
+| Unknown run | Use the complete UUID printed when the run was allocated. |
+| Existing output destination | Choose a fresh destination; `get` and output collection never overwrite it. |
+| Missing/invalid metrics | Inspect `result.json` diagnostics and retrieve the original artifact. |
+| Unfinished run after abrupt termination | Treat its saved state as historical; liveness and recovery are not implemented. |
+
+The matched-trial fixture starts with
+`uv run --locked --extra dev python benchmarks/fixture.py prepare <trial-directory>`.
+Give an agent access only to the generated `agent/` workspace, initialize Git there,
+and keep `private/` outside its accessible roots and Docker inputs. Final-test
+labels are held in the coordinator's private directory. The fixture does not
+enforce operating-system access controls; the evaluator must configure them.
+Use identical data fingerprints, agent/model versions, seeds, budgets and repetition
+indices for control (ordinary Python) and treatment (MLEF) trials. Train on
+`train.csv`, make decisions using `validation.csv`, and submit test predictions
+only after exploration ends. Score them outside the agent workspace with
+`fixture.py score <private-labels> <predictions>`.
+
+Record a trial JSON with `fixture.py record <input> <output>`: `task_fingerprint`,
+`condition` (`control` or `mlef`), `agent`, `model`, `budget_seconds`, `seed`,
+`repetition`, `elapsed_seconds`, `tool_output_bytes`, `intervention_count`,
+`valid_comparisons`, `time_to_first_valid_gain_seconds` (null if absent), and
+`heldout_accuracy`. These are evaluator-recorded measurements, not automatic agent
+telemetry. `fixture.py pair <control> <mlef>` rejects mismatched conditions and
+reports paired differences. Repeat matched trials to assess repeatability; this
+release includes the fixture, not a measured claim that MLEF improves agents.
+
+Contributions should include a minimal reproduction or concrete behavior change,
+focused pytest coverage for meaningful logic, and the uv checks above. Use
+Conventional Commit titles and keep PR descriptions limited to committed changes
+and their validation under Summary, Validation and optional Compatibility sections.
+For security reports, share sensitive details privately with the maintainer before
+posting a sanitized public reproduction. Do not upload credentials, private datasets
+or complete sensitive run artifacts to issues. Experiment code has network access
+and a writable artifact mount; use only trusted scripts. Timeouts, CPU/memory quotas,
+hard output limits and unattended-agent execution are outside this release.
+
+Release-candidate notes: versioned offline inspection, safe artifact retrieval,
+locked execution provenance, experiment intent, normalized evidence and honest
+baseline/candidate comparisons form the first complete feedback loop. Version-1
+run reads are preserved. Python 3.11-3.14 is the tested CLI range; experiment Python
+is independently pinned by the saved image recipe. Windows/macOS container
+validation and broader dependency layouts remain follow-up work.
+
+Build candidate artifacts using `uv build --out-dir .mlef/dist`, then verify them
+with `uv run --locked --extra dev python scripts/check_dist.py .mlef/dist`.
+Both formats are installed and exercised outside the checkout. Review the complete
+PR stack and platform limitations before tagging or publishing. Publication is a
+separate release action; no CI push or PR event publishes this package.
 
 Licensed under Apache-2.0; see [LICENSE](LICENSE).

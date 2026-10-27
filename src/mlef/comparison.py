@@ -1,7 +1,6 @@
 """Compare saved declarations and aggregate observations, never infer significance."""
 
 import math
-from datetime import datetime
 from pathlib import Path
 from typing import Literal
 
@@ -71,15 +70,6 @@ def changes(
     }
 
 
-def duration(record: RunRecord) -> float | None:
-    if record.started_at is None or record.finished_at is None:
-        return None
-    seconds = (
-        datetime.fromisoformat(record.finished_at) - datetime.fromisoformat(record.started_at)
-    ).total_seconds()
-    return seconds if seconds >= 0 else None
-
-
 def environment_values(root: Path, identifier: str) -> JsonValue:
     path = directory(root, identifier) / "environment.json"
     if not path.exists():
@@ -102,7 +92,12 @@ def metric_comparison(
     missing: list[str] = []
 
     def declaration(field: str, left: object, right: object) -> None:
-        if left is None or right is None or left == "" or right == "":
+        if (
+            left is None
+            or right is None
+            or (isinstance(left, str) and not left.strip())
+            or (isinstance(right, str) and not right.strip())
+        ):
             missing.append(f"Missing {field} declaration.")
         elif left != right:
             conflicts.append(f"Conflicting {field} declarations.")
@@ -199,8 +194,8 @@ def compare(root: Path, baseline_id: str, candidate_id: str) -> Comparison:
                 "environment": environment_values(root, candidate_id),
             },
         ),
-        baseline_seconds=duration(baseline),
-        candidate_seconds=duration(candidate),
+        baseline_seconds=baseline.execution_seconds,
+        candidate_seconds=candidate.execution_seconds,
         baseline_experiment=left.model_dump(mode="json") if left else None,
         candidate_experiment=right.model_dump(mode="json") if right else None,
         artifacts={"baseline": first.artifacts, "candidate": second.artifacts},

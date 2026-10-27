@@ -7,20 +7,145 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import BinaryIO
 
 import pytest
+from pydantic import BaseModel
 
 from mlef import runner
 from mlef.cli import init
+from mlef.comparison import compare
 from mlef.environment import file_hash
 from mlef.provenance import extract_source
+from mlef.records import read_run
+from mlef.storage import list_runs
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples/train.py"
 pytestmark = pytest.mark.skipif(
     os.environ.get("MLEF_TEST_DOCKER") != "1", reason="Set MLEF_TEST_DOCKER=1"
 )
+
+
+def test_tabular_feedback_loop(
+    project: Path, cli: Callable[..., subprocess.CompletedProcess[str]]
+) -> None:
+    example = EXAMPLE.parent / "tabular"
+    for name in [
+        "pyproject.toml",
+        "uv.lock",
+        "train.py",
+        "data.csv",
+        "baseline.json",
+        "candidate.json",
+    ]:
+        (project / name).write_bytes((example / name).read_bytes())
+    baseline_spec = json.loads((project / "baseline.json").read_text())
+    candidate_spec = json.loads((project / "candidate.json").read_text())
+    baseline_spec["dataset"]["fingerprint"] = candidate_spec["dataset"]["fingerprint"] = file_hash(
+        project / "data.csv"
+    )
+    (project / "baseline.json").write_text(json.dumps(baseline_spec))
+    cli("init")
+    cli("run", "train.py", "--include", "data.csv", "--experiment", "baseline.json")
+    (baseline,) = list_runs(project)[0]
+    candidate_spec["parent_run_id"] = baseline.id
+    (project / "candidate.json").write_text(json.dumps(candidate_spec))
+    cli(
+        "run",
+        "train.py",
+        "--include",
+        "data.csv",
+        "--experiment",
+        "candidate.json",
+        "--",
+        "--candidate",
+    )
+    candidate = list_runs(project)[0][0]
+    comparison = json.loads(cli("compare", baseline.id, candidate.id, "--json").stdout)
+    assert comparison["compatibility"] == "declared-compatible"
+    assert comparison["metrics"][0]["baseline"] == 0.5
+    assert comparison["metrics"][0]["candidate"] == 1
+    assert comparison["metrics"][0]["delta"] == 0.5
+    assert comparison["candidate_experiment"]["parent_run_id"] == baseline.id
+    assert (
+        json.loads(cli("status", candidate.id, "--json").stdout)["result"]["evidence_status"]
+        == "available"
+    )
+    assert len(json.loads(cli("list", "--json").stdout)) == 2
+    cli("get", candidate.id, "metrics.json", "--output", "retrieved.json")
+    assert json.loads((project / "retrieved.json").read_text())["accuracy"] == 1
+    candidate_spec["evaluation"]["split_fingerprint"] = "different-split"
+    (project / "candidate.json").write_text(json.dumps(candidate_spec))
+    cli(
+        "run",
+        "train.py",
+        "--include",
+        "data.csv",
+        "--experiment",
+        "candidate.json",
+        "--",
+        "--candidate",
+    )
+    mismatch = list_runs(project)[0][0]
+    assert compare(project, baseline.id, mismatch.id).compatibility == "incompatible"
+
+
+def test_independent_runs_keep_outputs_separate(
+    project: Path, cli: Callable[..., subprocess.CompletedProcess[str]]
+) -> None:
+    cli("init")
+    (project / "train.py").write_bytes(EXAMPLE.read_bytes())
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(cli, "run", "train.py", "--", "--accuracy", value)
+            for value in ["0.2", "0.8"]
+        ]
+        for future in futures:
+            future.result()
+    records = list_runs(project)[0]
+    assert len(records) == 2
+    scores = set()
+    for record in records:
+        assert record.state == "succeeded"
+        output = project / ".mlef/runs" / record.id / "artifacts/metrics.json"
+        scores.add(json.loads(output.read_text())["accuracy"])
+    assert scores == {0.2, 0.8}
+
+
+def test_invalid_metrics_preserve_success(project: Path) -> None:
+    init(project)
+    (project / "train.py").write_text(
+        "import os\nfrom pathlib import Path\n"
+        "Path(os.environ['MLEF_OUTPUT_DIR'], 'metrics.json').write_text('{\"score\":true}')\n"
+    )
+    assert runner.run(project, Path("train.py"), [], [], []) == 0
+    (directory,) = (project / ".mlef/runs").iterdir()
+    assert read_run(directory / "run.json").state == "succeeded"
+    assert json.loads((directory / "result.json").read_text())["evidence_status"] == "invalid"
+
+
+def test_required_result_write_failure_fails_run(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    init(project)
+    (project / "train.py").write_bytes(EXAMPLE.read_bytes())
+    original_save = runner.save
+
+    def fail_result(path: Path, data: dict[str, object] | BaseModel) -> None:
+        if path.name == "result.json":
+            raise OSError("simulated full disk for required result")
+        original_save(path, data)
+
+    monkeypatch.setattr(runner, "save", fail_result)
+    assert runner.run(project, Path("train.py"), [], [], []) == 1
+    (directory,) = (project / ".mlef/runs").iterdir()
+    record = read_run(directory / "run.json")
+    assert record.state == "failed"
+    assert record.execution_exit_code == 0
+    assert record.error is not None
+    assert record.error.category == "storage"
 
 
 def test_locked_environment_and_manual_repeat(project: Path) -> None:

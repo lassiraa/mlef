@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "hypothesis": "A majority-class model establishes the baseline.",
+  "parameters": {
+    "model": "majority"
+  },
+  "seeds": {},
+  "dataset": {
+    "reference": "data.csv",
+    "fingerprint": "6c538acbc441e0e5e51edf7358e8310bf68d92be1b7673500ab07ecf5d738adb"
+  },
+  "evaluation": {
+    "protocol_id": "toy-version-holdout-v1",
+    "split_fingerprint": "rows-0-7-train-8-11-validation-v1",
+    "seeds": {},
+    "metric_definitions": {
+      "accuracy": "correct-validation-predictions/4-v1"
+    }
+  },
+  "metric_directions": {
+    "accuracy": "maximize"
+  }
+}

@@ -6,16 +6,18 @@ import subprocess
 import tarfile
 from pathlib import Path, PurePosixPath
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class GitProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, validate_assignment=True)
     commit: str | None
     branch: str | None
     dirty: bool
 
 
 class SourceInputs(BaseModel):
+    model_config = ConfigDict(extra="forbid", strict=True, validate_assignment=True)
     source_sha256: str
     included_untracked: list[str]
     dependency_hashes: dict[str, str] = Field(default_factory=dict)
