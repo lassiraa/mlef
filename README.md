@@ -36,8 +36,8 @@ relative to HEAD (the empty tree for an unborn repository), and the generated
 `Dockerfile`. Detached HEAD records a null branch. The archive defines the actual
 source inputs; the patch contains tracked changes only.
 Root dependency manifests and locks are included even when untracked.
-These are additive fields on the current version-1 run metadata; the complete
-version-2 inspection/result contract is still planned.
+New runs write version-2 Pydantic metadata. Inspection reads pre-release version-1
+records without rewriting them and marks unavailable evidence as unknown.
 It resolves `python:3.12-slim` to an immutable digest and executes from `/workspace`; your working tree
 is never mounted into the experiment. Run storage and credential files are
 excluded. Symlink inputs are currently unsupported. Changes made while source
@@ -59,8 +59,20 @@ also records dependency and Dockerfile hashes. Capture failures prevent executio
 and retain an incomplete-environment warning. Host environment variables are not
 collected. Recorded images and packages still need to be available for a rebuild;
 datasets, network responses and nondeterminism remain the caller's responsibility.
-Result-query commands and background execution are still planned. Experiment code
+Background execution is still planned. Experiment code
 runs with network access and can write to its artifact mount.
+
+Inspect runs without Docker using `mlef list [--json]` and
+`mlef status <run-id> [--json]`. `list` orders newest first, skips corrupt records
+with stderr diagnostics, and returns a JSON array. An unfinished state describes
+the last saved state; current process liveness is unknown. Unknown IDs, unsupported
+versions, and corrupt records return exit 1; JSON failures include a structured
+error on stdout. Invalid arguments return exit 2.
+
+`mlef get <run-id>` lists artifacts. Retrieve a file or directory with
+`mlef get <run-id> <artifact-path> --output <destination>`; the default destination
+is the artifact basename in the current directory. Existing destinations, escaping
+paths, links and special files are refused. Full UUID4 run IDs are required.
 
 Try the small locked example in its own Git project (from this checkout):
 
