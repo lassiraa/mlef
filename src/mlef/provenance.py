@@ -1,5 +1,6 @@
 """Saved source inputs; the archive, rather than the Git patch, defines execution."""
 
+import gzip
 import hashlib
 import shutil
 import subprocess
@@ -60,7 +61,11 @@ def capture(root: Path, run_dir: Path, files: list[Path]) -> tuple[GitProvenance
     (run_dir / "changes.patch").write_bytes(patch)
     tracked = set(git(root, "ls-files", "--cached", "-z").decode("utf-8").split("\0"))
     archive_path = run_dir / "source.tar.gz"
-    with tarfile.open(archive_path, "w:gz", dereference=False) as archive:
+    with (
+        archive_path.open("wb") as output,
+        gzip.GzipFile(filename="", fileobj=output, mode="wb", mtime=0) as compressed,
+        tarfile.open(fileobj=compressed, mode="w", dereference=False) as archive,
+    ):
         for path in files:
             archive.add(root / path, arcname=path.as_posix(), recursive=False)
     with archive_path.open("rb") as source:

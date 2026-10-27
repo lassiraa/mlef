@@ -6,7 +6,7 @@ from uuid import uuid4
 import pytest
 
 from mlef.cli import init, main
-from mlef.comparison import compare
+from mlef.comparison import changes, compare
 from mlef.evidence import normalize
 from mlef.records import Dataset, Evaluation, Experiment, RunRecord
 from mlef.runner import save
@@ -98,6 +98,7 @@ def test_comparison_reports_deltas_parameters_and_lineage(project: Path) -> None
     assert comparison.parameters["feature"].candidate is True
     assert comparison.candidate_experiment == candidate.model_dump(mode="json")
     assert comparison.baseline_seconds == 2
+    assert "flag" in changes({"flag": False}, {"flag": 0})
 
 
 @pytest.mark.parametrize(

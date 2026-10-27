@@ -1,5 +1,6 @@
 """Compare saved declarations and aggregate observations, never infer significance."""
 
+import json
 import math
 from pathlib import Path
 from typing import Literal
@@ -66,7 +67,9 @@ def changes(
             candidate=candidate.get(name),
         )
         for name in sorted(baseline.keys() | candidate.keys())
-        if (name in baseline) != (name in candidate) or baseline.get(name) != candidate.get(name)
+        if (name in baseline) != (name in candidate)
+        or json.dumps(baseline.get(name), sort_keys=True)
+        != json.dumps(candidate.get(name), sort_keys=True)
     }
 
 
