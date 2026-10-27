@@ -1,10 +1,11 @@
-"""A foreground Docker runner. Provenance and locked dependencies follow in step 3."""
+"""A foreground Docker runner using a durable source snapshot."""
 
 import json
 import os
 import shutil
 import subprocess
 import sys
+import tarfile
 import tempfile
 import threading
 from datetime import UTC, datetime
@@ -12,6 +13,8 @@ from io import BufferedReader
 from pathlib import Path
 from typing import BinaryIO, TextIO
 from uuid import uuid4
+
+from .provenance import capture, extract_source
 
 BASE_IMAGE = "python:3.12-slim"
 
@@ -48,6 +51,8 @@ def source_files(root: Path, script: Path, includes: list[Path]) -> list[Path]:
     for path in [script, *includes]:
         relative_path(root, path)
         source = root / path
+        if source.is_symlink():
+            raise ValueError(f"Symbolic links are not supported in source inputs yet: {path}")
         if not source.exists():
             raise ValueError(f"Source path does not exist: {path}")
         if source.is_dir():
@@ -58,7 +63,19 @@ def source_files(root: Path, script: Path, includes: list[Path]) -> list[Path]:
     for path in sorted(files):
         relative_path(root, path)
         if any(
-            part.lower() in {".venv", "__pycache__", ".ssh"}
+            part.lower()
+            in {
+                ".venv",
+                "venv",
+                "__pycache__",
+                ".pytest_cache",
+                ".ruff_cache",
+                ".mypy_cache",
+                ".tox",
+                ".ssh",
+                ".aws",
+                ".azure",
+            }
             or part.lower() == ".env"
             or part.lower().startswith(".env.")
             or part.lower().endswith((".pem", ".key"))
@@ -164,7 +181,7 @@ def run(
     for filename in ["stdout.log", "stderr.log", "runner.log"]:
         (run_dir / filename).touch()
     command = ["python", script.as_posix(), *arguments]
-    warnings = ["Step 2: Git/environment provenance and locked dependencies are not captured yet."]
+    warnings = ["Environment provenance and locked dependencies are not captured yet."]
     metadata: dict[str, object] = {
         "schema_version": 1,
         "id": run_id,
@@ -177,6 +194,8 @@ def run(
         "error": None,
         "warnings": warnings,
         "outputs": [path.as_posix() for path in outputs],
+        "git": None,
+        "inputs": None,
     }
     save(run_dir / "run.json", metadata)
     print(f"Run ID: {run_id}\nResults: {run_dir}", flush=True)
@@ -188,6 +207,9 @@ def run(
     result = 1
     with (run_dir / "runner.log").open("ab") as log:
         try:
+            git_provenance, inputs = capture(root, run_dir, files)
+            metadata.update(git=git_provenance.model_dump(), inputs=inputs.model_dump())
+            save(run_dir / "run.json", metadata)
             if shutil.which("docker") is None:
                 raise RuntimeError(
                     "Docker executable not found. Install Docker and start its engine."
@@ -197,10 +219,7 @@ def run(
                 context = Path(temporary)
                 workspace = context / "workspace"
                 workspace.mkdir()
-                for path in files:
-                    destination = workspace / path
-                    destination.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(root / path, destination)
+                extract_source(run_dir / "source.tar.gz", workspace)
                 user = None
                 if hasattr(os, "getuid") and hasattr(os, "getgid"):
                     user = f"{os.getuid()}:{os.getgid()}"
@@ -211,6 +230,7 @@ def run(
                     f"COPY {ownership}workspace/ /workspace/\n{workspace_owner}",
                     encoding="utf-8",
                 )
+                shutil.copy2(context / "Dockerfile", run_dir / "Dockerfile")
                 docker(["build", "--tag", image, str(context)], log)
             create = [
                 "create",
@@ -265,7 +285,13 @@ def run(
             if created:
                 docker(["stop", "--time", "5", name], log, check=False)
             result = 130
-        except (OSError, RuntimeError, subprocess.SubprocessError, ValueError) as error:
+        except (
+            OSError,
+            RuntimeError,
+            subprocess.SubprocessError,
+            ValueError,
+            tarfile.TarError,
+        ) as error:
             metadata["error"] = {"category": "execution", "message": str(error)}
             log.write((str(error) + "\n").encode("utf-8"))
             print(f"mlef: {error}", file=sys.stderr)
