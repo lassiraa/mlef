@@ -14,11 +14,91 @@ import pytest
 
 from mlef import runner
 from mlef.cli import init
+from mlef.environment import file_hash
+from mlef.provenance import extract_source
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples/train.py"
 pytestmark = pytest.mark.skipif(
     os.environ.get("MLEF_TEST_DOCKER") != "1", reason="Set MLEF_TEST_DOCKER=1"
 )
+
+
+def test_locked_environment_and_manual_repeat(project: Path) -> None:
+    example = EXAMPLE.parent / "locked"
+    for name in ["pyproject.toml", "uv.lock", "train.py"]:
+        (project / name).write_bytes((example / name).read_bytes())
+    lock = (project / "uv.lock").read_bytes()
+    init(project)
+    assert runner.run(project, Path("train.py"), [], [], []) == 0
+    (directory,) = (project / ".mlef/runs").iterdir()
+    metadata = json.loads((directory / "run.json").read_text())
+    environment = json.loads((directory / "environment.json").read_text())
+    assert environment["container"]["packages"]["packaging"] == "25.0"
+    assert environment["container"]["python"].startswith("3.12.")
+    assert environment["container"]["os_release"]["ID"]
+    assert environment["container"]["uv_version"].split()[:2] == ["uv", "0.13.6"]
+    assert environment["base_image"]["digests"]
+    assert environment["uv_image"]["digests"]
+    assert environment["execution_image"]["id"].startswith("sha256:")
+    assert environment["warnings"] == metadata["warnings"] == []
+    assert metadata["inputs"]["dependency_hashes"] == {
+        name: file_hash(project / name) for name in ["pyproject.toml", "uv.lock"]
+    }
+    assert metadata["inputs"]["build_recipe_sha256"] == file_hash(directory / "Dockerfile")
+    assert (project / "uv.lock").read_bytes() == lock
+    (project / "train.py").write_text("raise RuntimeError('edited after original run')")
+    (project / "pyproject.toml").write_text("invalid metadata")
+    repeat = project.parent / "repeat"
+    repeat.mkdir()
+    extract_source(directory / "source.tar.gz", repeat / "workspace")
+    (repeat / "Dockerfile").write_bytes((directory / "Dockerfile").read_bytes())
+    outputs = repeat / "outputs"
+    outputs.mkdir()
+    image = f"mlef-repeat:{metadata['id']}"
+    with (repeat / "runner.log").open("ab") as log:
+        try:
+            runner.docker(["build", "--tag", image, str(repeat)], log)
+            runner.docker(
+                [
+                    "run",
+                    "--rm",
+                    "--env",
+                    "MLEF_OUTPUT_DIR=/outputs",
+                    "--volume",
+                    f"{outputs}:/outputs",
+                    image,
+                    *metadata["command"],
+                ],
+                log,
+            )
+        finally:
+            runner.docker(["image", "rm", image], log, check=False)
+    assert (outputs / "metrics.json").read_bytes() == (
+        directory / "artifacts/metrics.json"
+    ).read_bytes()
+    assert (repeat / "workspace/uv.lock").read_bytes() == lock
+
+
+def test_stale_lock_fails_without_resolving_or_running(project: Path) -> None:
+    example = EXAMPLE.parent / "locked"
+    for name in ["pyproject.toml", "uv.lock", "train.py"]:
+        (project / name).write_bytes((example / name).read_bytes())
+    lock = (project / "uv.lock").read_bytes()
+    manifest = project / "pyproject.toml"
+    manifest.write_text(manifest.read_text().replace("packaging==25.0", "packaging==24.2"))
+    init(project)
+    assert runner.run(project, Path("train.py"), [], [], []) == 1
+    (directory,) = (project / ".mlef/runs").iterdir()
+    metadata = json.loads((directory / "run.json").read_text())
+    environment = json.loads((directory / "environment.json").read_text())
+    assert metadata["state"] == "failed"
+    assert metadata["started_at"] is None
+    assert metadata["execution_exit_code"] is None
+    assert environment["container"] is None
+    assert environment["warnings"]
+    assert (project / "uv.lock").read_bytes() == lock
+    assert (directory / "Dockerfile").exists()
+    assert "lockfile" in (directory / "runner.log").read_text().lower()
 
 
 def test_nonroot_container_can_write_workspace_and_artifacts(

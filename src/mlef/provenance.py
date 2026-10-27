@@ -6,7 +6,7 @@ import subprocess
 import tarfile
 from pathlib import Path, PurePosixPath
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class GitProvenance(BaseModel):
@@ -18,6 +18,8 @@ class GitProvenance(BaseModel):
 class SourceInputs(BaseModel):
     source_sha256: str
     included_untracked: list[str]
+    dependency_hashes: dict[str, str] = Field(default_factory=dict)
+    build_recipe_sha256: str | None = None
 
 
 def git(root: Path, *arguments: str) -> bytes:

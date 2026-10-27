@@ -82,7 +82,9 @@ def test_missing_docker_preserves_failed_metadata_and_logs(
         assert (directory / name).exists()
 
 
-def test_build_failure_is_recorded(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_build_failure_is_recorded(
+    project: Path, monkeypatch: pytest.MonkeyPatch, docker_images: None
+) -> None:
     main(["init"])
     (project / "train.py").write_text("print('hello')")
 
