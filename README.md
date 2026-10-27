@@ -1,8 +1,8 @@
 # mlef
 
 Run a Python experiment in Docker and keep its logs and output files together.
-Early development: the local runner works with the Python standard library;
-locked dependencies and Git/environment provenance are planned next.
+Early development: the local runner saves source and Git provenance;
+locked dependencies and environment provenance are planned next.
 
 Requires Python 3.11+, Git, and Docker running Linux containers. Host targets are
 Linux, macOS, and Windows; platform validation is still in progress.
@@ -28,14 +28,21 @@ the run without overwriting existing artifacts.
 Use Ctrl+C to cancel; mlef gives the container five seconds to stop before
 forcing termination and collecting available outputs.
 
-The runner copies tracked files and the explicitly named script into a temporary
-Docker build context. Include other untracked source with `--include path`.
+The runner archives tracked files and the explicitly named script into
+`source.tar.gz`, then builds from that saved archive. Include other untracked
+source with `--include path`. Each run saves the archive SHA-256, included
+untracked paths, Git commit/branch/dirty state, a binary-capable `changes.patch`
+relative to HEAD (the empty tree for an unborn repository), and the generated
+`Dockerfile`. Detached HEAD records a null branch. The archive defines the actual
+source inputs; the patch contains tracked changes only.
+These are additive fields on the current version-1 run metadata; the complete
+version-2 inspection/result contract is still planned.
 It uses `python:3.12-slim` and executes from `/workspace`; your working tree
 is never mounted into the experiment. Run storage and credential files are
 excluded. Symlink inputs are currently unsupported. Changes made while source
 is being copied can affect the copy, so avoid editing inputs during preparation.
 
-Dependencies are not installed yet. Source/environment snapshots, result-query
+Dependencies are not installed yet. Environment snapshots, result-query
 commands, and background execution are not implemented. These runs do not yet
 provide the full reproducibility contract. Experiment code runs with the
 container's network access and can write to its artifact mount.
