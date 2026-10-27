@@ -53,7 +53,9 @@ def list_runs(root: Path) -> tuple[list[RunRecord], list[str]]:
             runs.append(inspect(root, path.name))
         except QueryError as error:
             diagnostics.append(str(error))
-    runs.sort(key=lambda record: (datetime.fromisoformat(record.created_at), record.id), reverse=True)
+    runs.sort(
+        key=lambda record: (datetime.fromisoformat(record.created_at), record.id), reverse=True
+    )
     return runs, diagnostics
 
 
