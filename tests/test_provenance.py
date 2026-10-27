@@ -151,7 +151,7 @@ def test_archive_links_and_special_files_are_rejected(tmp_path: Path, kind: byte
 
 
 def test_build_uses_saved_source_after_worktree_edit(
-    project: Path, monkeypatch: pytest.MonkeyPatch
+    project: Path, monkeypatch: pytest.MonkeyPatch, docker_images: None
 ) -> None:
     init(project)
     (project / "train.py").write_text("original")
