@@ -1,11 +1,12 @@
 import json
+import os
 from pathlib import Path
 from uuid import uuid4
 
 import pytest
 
 from mlef.cli import init, main
-from mlef.comparison import compare
+from mlef.comparison import changes, compare
 from mlef.evidence import normalize
 from mlef.records import Dataset, Evaluation, Experiment, RunRecord
 from mlef.runner import save
@@ -43,6 +44,8 @@ def saved(
             "started_at": "2026-01-01T00:00:01Z",
             "finished_at": "2026-01-01T00:00:03Z",
             "command": ["python", "train.py"],
+            "execution_exit_code": 0 if state == "succeeded" else 7,
+            "execution_seconds": 2.0,
             "experiment": experiment,
         }
     )
@@ -95,6 +98,7 @@ def test_comparison_reports_deltas_parameters_and_lineage(project: Path) -> None
     assert comparison.parameters["feature"].candidate is True
     assert comparison.candidate_experiment == candidate.model_dump(mode="json")
     assert comparison.baseline_seconds == 2
+    assert "flag" in changes({"flag": False}, {"flag": 0})
 
 
 @pytest.mark.parametrize(
@@ -150,6 +154,7 @@ def test_missing_legacy_and_zero_baseline(project: Path) -> None:
     "content",
     [
         '{"unknown": 1}',
+        '{"schema_version":true}',
         '{"seeds":{"seed":true}}',
         '{"parameters":{"x":NaN}}',
         '{"parameters":{"x":1e999}}',
@@ -181,3 +186,13 @@ def test_json_comparison_and_bounded_summary(
     assert len(json.loads(capsys.readouterr().out)["metrics"]) == 25
     assert main(["compare", first, second]) == 0
     assert "5 metrics omitted" in capsys.readouterr().out
+
+
+def test_named_pipe_metrics_are_invalid_without_reading(project: Path) -> None:
+    if not hasattr(os, "mkfifo"):
+        pytest.skip("POSIX named pipes are unavailable on this host")
+    identifier = saved(project, None)
+    os.mkfifo(project / ".mlef/runs" / identifier / "artifacts/metrics.json")
+    result = normalize(project, identifier)
+    assert result.evidence_status == "invalid"
+    assert "regular file" in result.diagnostics[0].message

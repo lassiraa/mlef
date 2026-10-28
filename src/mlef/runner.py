@@ -335,6 +335,13 @@ def run(
             if state.get("Error"):
                 raise RuntimeError(f"Container execution failed: {state['Error']}")
             metadata.execution_exit_code = state["ExitCode"]
+            metadata.execution_seconds = max(
+                0,
+                (
+                    datetime.fromisoformat(state["FinishedAt"])
+                    - datetime.fromisoformat(state["StartedAt"])
+                ).total_seconds(),
+            )
             if state["ExitCode"]:
                 raise RuntimeError(f"Script exited with code {state['ExitCode']}; see stderr.log.")
             if attach_exit_code:

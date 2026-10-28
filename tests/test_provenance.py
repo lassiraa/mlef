@@ -49,6 +49,11 @@ def test_snapshot_unborn_and_explicit_untracked_inputs(project: Path, tmp_path: 
     extract_source(saved / "source.tar.gz", saved / "extracted")
     assert (saved / "extracted/train.py").read_bytes() == b"print('original')\n"
     assert not (saved / "extracted/.git").exists()
+    assert (saved / "source.tar.gz").read_bytes()[4:8] == bytes(4)
+    _, repeated = capture(project, saved, source_files(project, Path("train.py"), []))
+    assert repeated.source_sha256 != inputs.source_sha256  # The file was changed after capture.
+    _, unchanged = capture(project, saved, source_files(project, Path("train.py"), []))
+    assert unchanged.source_sha256 == repeated.source_sha256
 
 
 def test_git_dirty_binary_deletion_and_detached_head(project: Path, tmp_path: Path) -> None:

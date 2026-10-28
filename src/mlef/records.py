@@ -35,15 +35,25 @@ def json_object(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
 
 
 def read_json(path: Path) -> JsonValue:
-    value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=json_object)
-    json.dumps(value, allow_nan=False)  # Reject NaN, Infinity and overflowing JSON numbers.
-    return TypeAdapter(JsonValue).validate_python(value)
+    try:
+        value = json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=json_object)
+        json.dumps(value, allow_nan=False)  # Reject non-finite and overflowing JSON numbers.
+        return TypeAdapter(JsonValue).validate_python(value)
+    except RecursionError as error:
+        raise ValueError("JSON nesting exceeds the supported depth.") from error
 
 
 class Contract(BaseModel):
     model_config = ConfigDict(
         extra="forbid", strict=True, allow_inf_nan=False, validate_assignment=True
     )
+
+    @field_validator("schema_version", mode="before", check_fields=False)
+    @classmethod
+    def integer_version(cls, value: object) -> object:
+        if type(value) is not int:
+            raise ValueError("Schema version must be an integer, not a boolean or string.")
+        return value
 
 
 class Dataset(Contract):
@@ -89,6 +99,7 @@ class RunRecord(Contract):
     finished_at: str | None = None
     command: list[str] = Field(min_length=1)
     execution_exit_code: int | None = None
+    execution_seconds: float | None = Field(default=None, ge=0)
     error: RunError | None = None
     warnings: list[str] = Field(default_factory=list)
     outputs: list[str] = Field(default_factory=list)
@@ -123,4 +134,9 @@ def read_run(path: Path) -> RunRecord:
         if not isinstance(warnings, list):
             raise ValueError("Invalid legacy warnings.")
         data["warnings"] = [*warnings, "Legacy version-1 record; unavailable evidence is unknown."]
-    return RunRecord.model_validate(data)
+    record = RunRecord.model_validate(data)
+    if record.state in {"succeeded", "failed", "cancelled"} and record.finished_at is None:
+        raise ValueError("A terminal run must have a finish timestamp.")
+    if record.state == "succeeded" and record.execution_exit_code != 0:
+        raise ValueError("A successful run must have execution exit code zero.")
+    return record

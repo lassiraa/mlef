@@ -109,7 +109,11 @@ def retrieve(root: Path, identifier: str, relative: str, destination: Path | Non
         )
     if source.is_dir():
         for item in source.rglob("*"):
-            if item.is_symlink() or not (item.is_file() or item.is_dir()):
+            if (
+                item.is_symlink()
+                or not (item.is_file() or item.is_dir())
+                or not item.resolve().is_relative_to(source.resolve())
+            ):
                 raise QueryError(
                     "unsafe_path", "Artifact directory contains a link or special file."
                 )

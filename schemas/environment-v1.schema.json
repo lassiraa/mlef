@@ -1,0 +1,217 @@
+{
+  "$defs": {
+    "ContainerInfo": {
+      "properties": {
+        "architecture": {
+          "title": "Architecture",
+          "type": "string"
+        },
+        "os": {
+          "title": "Os",
+          "type": "string"
+        },
+        "os_release": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Os Release",
+          "type": "object"
+        },
+        "packages": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Packages",
+          "type": "object"
+        },
+        "python": {
+          "title": "Python",
+          "type": "string"
+        },
+        "uv_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Uv Version"
+        }
+      },
+      "required": [
+        "os",
+        "architecture",
+        "python",
+        "os_release",
+        "packages",
+        "uv_version"
+      ],
+      "title": "ContainerInfo",
+      "type": "object"
+    },
+    "DependencyInputs": {
+      "properties": {
+        "hashes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Hashes",
+          "type": "object"
+        },
+        "install_command": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Install Command"
+        }
+      },
+      "title": "DependencyInputs",
+      "type": "object"
+    },
+    "ImageIdentity": {
+      "properties": {
+        "architecture": {
+          "title": "Architecture",
+          "type": "string"
+        },
+        "digests": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Digests",
+          "type": "array"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "os": {
+          "title": "Os",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "digests",
+        "os",
+        "architecture"
+      ],
+      "title": "ImageIdentity",
+      "type": "object"
+    },
+    "SystemInfo": {
+      "properties": {
+        "architecture": {
+          "title": "Architecture",
+          "type": "string"
+        },
+        "os": {
+          "title": "Os",
+          "type": "string"
+        },
+        "python": {
+          "title": "Python",
+          "type": "string"
+        }
+      },
+      "required": [
+        "os",
+        "architecture",
+        "python"
+      ],
+      "title": "SystemInfo",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "base_image": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageIdentity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "container": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ContainerInfo"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "dependencies": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/DependencyInputs"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "execution_image": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageIdentity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "host": {
+      "$ref": "#/$defs/SystemInfo"
+    },
+    "mlef_version": {
+      "default": "0.1.0rc1",
+      "title": "Mlef Version",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "uv_image": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImageIdentity"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null
+    },
+    "warnings": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Warnings",
+      "type": "array"
+    }
+  },
+  "title": "Environment",
+  "type": "object"
+}

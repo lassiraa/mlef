@@ -1,0 +1,255 @@
+{
+  "$defs": {
+    "JsonValue": {},
+    "MetricComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Baseline"
+        },
+        "candidate": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Candidate"
+        },
+        "compatibility": {
+          "enum": [
+            "declared-compatible",
+            "incompatible",
+            "unknown"
+          ],
+          "title": "Compatibility",
+          "type": "string"
+        },
+        "delta": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delta"
+        },
+        "direction": {
+          "anyOf": [
+            {
+              "enum": [
+                "maximize",
+                "minimize"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Direction"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "observation": {
+          "default": "unavailable",
+          "enum": [
+            "improved",
+            "regressed",
+            "unchanged",
+            "unavailable"
+          ],
+          "title": "Observation",
+          "type": "string"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "relative_delta": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Relative Delta"
+        }
+      },
+      "required": [
+        "name",
+        "baseline",
+        "candidate",
+        "compatibility",
+        "reasons"
+      ],
+      "title": "MetricComparison",
+      "type": "object"
+    },
+    "ValueChange": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline": {
+          "$ref": "#/$defs/JsonValue",
+          "default": null
+        },
+        "baseline_present": {
+          "title": "Baseline Present",
+          "type": "boolean"
+        },
+        "candidate": {
+          "$ref": "#/$defs/JsonValue",
+          "default": null
+        },
+        "candidate_present": {
+          "title": "Candidate Present",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "baseline_present",
+        "candidate_present"
+      ],
+      "title": "ValueChange",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifacts": {
+      "additionalProperties": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Artifacts",
+      "type": "object"
+    },
+    "baseline_experiment": {
+      "$ref": "#/$defs/JsonValue"
+    },
+    "baseline_id": {
+      "title": "Baseline Id",
+      "type": "string"
+    },
+    "baseline_seconds": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Baseline Seconds"
+    },
+    "candidate_experiment": {
+      "$ref": "#/$defs/JsonValue"
+    },
+    "candidate_id": {
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "candidate_seconds": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Candidate Seconds"
+    },
+    "compatibility": {
+      "enum": [
+        "declared-compatible",
+        "incompatible",
+        "unknown"
+      ],
+      "title": "Compatibility",
+      "type": "string"
+    },
+    "limitations": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Limitations",
+      "type": "array"
+    },
+    "metrics": {
+      "items": {
+        "$ref": "#/$defs/MetricComparison"
+      },
+      "title": "Metrics",
+      "type": "array"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ValueChange"
+      },
+      "title": "Parameters",
+      "type": "object"
+    },
+    "provenance": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ValueChange"
+      },
+      "title": "Provenance",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "baseline_id",
+    "candidate_id",
+    "compatibility",
+    "metrics",
+    "parameters",
+    "provenance",
+    "baseline_seconds",
+    "candidate_seconds",
+    "baseline_experiment",
+    "candidate_experiment",
+    "artifacts"
+  ],
+  "title": "Comparison",
+  "type": "object"
+}

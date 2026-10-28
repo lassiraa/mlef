@@ -1,0 +1,148 @@
+"""Prepare matched trial data and score held-out predictions outside the agent workspace."""
+
+import argparse
+import csv
+import hashlib
+import json
+import random
+from pathlib import Path
+from typing import Literal
+
+from pydantic import Field, JsonValue, TypeAdapter
+
+from mlef.records import Contract, read_json
+
+
+class Trial(Contract):
+    schema_version: Literal[1] = 1
+    task_fingerprint: str
+    condition: Literal["control", "mlef"]
+    agent: str
+    model: str
+    budget_seconds: int = Field(gt=0)
+    seed: int
+    repetition: int = Field(ge=0)
+    elapsed_seconds: float = Field(ge=0)
+    tool_output_bytes: int = Field(ge=0)
+    intervention_count: int = Field(ge=0)
+    valid_comparisons: int = Field(ge=0)
+    time_to_first_valid_gain_seconds: float | None = Field(default=None, ge=0)
+    heldout_accuracy: float = Field(ge=0, le=1)
+
+
+def prepare(destination: Path, seed: int) -> None:
+    destination.mkdir()  # Never overwrite an existing trial.
+    workspace, private = destination / "agent", destination / "private"
+    workspace.mkdir()
+    private.mkdir()
+    rng = random.Random(seed)
+    labels = {}
+    for split, count in [("train", 40), ("validation", 20), ("test", 20)]:
+        with (workspace / f"{split}.csv").open("w", encoding="utf-8", newline="") as stream:
+            fields = ["id", "x1", "x2"] + ([] if split == "test" else ["target"])
+            writer = csv.DictWriter(stream, fieldnames=fields)
+            writer.writeheader()
+            for index in range(count):
+                x1, x2 = rng.randint(-10, 10), rng.randint(-10, 10)
+                identifier = f"{split}-{index}"
+                target = int(x1 + 2 * x2 > 0)
+                row: dict[str, str | int] = {"id": identifier, "x1": x1, "x2": x2}
+                if split == "test":
+                    labels[identifier] = target
+                else:
+                    row["target"] = target
+                writer.writerow(row)
+    fingerprint = hashlib.sha256(
+        b"".join(
+            (workspace / name).read_bytes() for name in ["train.csv", "validation.csv", "test.csv"]
+        )
+    ).hexdigest()
+    (workspace / "task.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "task_fingerprint": fingerprint,
+                "target": "target",
+                "metric": "accuracy",
+                "direction": "maximize",
+                "seed": seed,
+                "instructions": "Train, validate, then submit test predictions by ID.",
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    (private / "labels.json").write_text(json.dumps(labels), encoding="utf-8")
+
+
+def score(private_labels: Path, predictions: Path) -> float:
+    adapter = TypeAdapter(dict[str, int])
+    labels = adapter.validate_python(read_json(private_labels), strict=True)
+    submitted = adapter.validate_python(read_json(predictions), strict=True)
+    if (
+        not labels
+        or labels.keys() != submitted.keys()
+        or any(value not in (0, 1) for value in submitted.values())
+    ):
+        raise ValueError("Submit exactly one binary prediction for each held-out ID.")
+    return sum(submitted[key] == value for key, value in labels.items()) / len(labels)
+
+
+def record(path: Path, destination: Path) -> None:
+    trial = Trial.model_validate(read_json(path))
+    if trial.elapsed_seconds > trial.budget_seconds:
+        raise ValueError("Trial exceeded its matched wall-clock budget.")
+    first = trial.time_to_first_valid_gain_seconds
+    if first is not None and (first > trial.elapsed_seconds or trial.valid_comparisons == 0):
+        raise ValueError("First valid gain requires a valid comparison within the measured trial.")
+    with destination.open("x", encoding="utf-8") as stream:
+        stream.write(trial.model_dump_json(indent=2) + "\n")
+
+
+def pair(control_path: Path, mlef_path: Path) -> dict[str, JsonValue]:
+    control = Trial.model_validate(read_json(control_path))
+    treatment = Trial.model_validate(read_json(mlef_path))
+    if control.condition != "control" or treatment.condition != "mlef":
+        raise ValueError("Expected a control trial followed by a mlef trial.")
+    for name in ["task_fingerprint", "agent", "model", "budget_seconds", "seed", "repetition"]:
+        if getattr(control, name) != getattr(treatment, name):
+            raise ValueError(f"Unmatched trial field: {name}")
+    return {
+        "schema_version": 1,
+        "repetition": control.repetition,
+        "heldout_accuracy_delta": treatment.heldout_accuracy - control.heldout_accuracy,
+        "elapsed_seconds_delta": treatment.elapsed_seconds - control.elapsed_seconds,
+        "tool_output_bytes_delta": treatment.tool_output_bytes - control.tool_output_bytes,
+        "intervention_count_delta": treatment.intervention_count - control.intervention_count,
+        "limitation": "One paired observation does not establish product uplift or significance.",
+    }
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser()
+    commands = parser.add_subparsers(dest="command", required=True)
+    generate = commands.add_parser("prepare")
+    generate.add_argument("destination", type=Path)
+    generate.add_argument("--seed", type=int, default=31415)
+    evaluate = commands.add_parser("score")
+    evaluate.add_argument("labels", type=Path)
+    evaluate.add_argument("predictions", type=Path)
+    capture = commands.add_parser("record")
+    capture.add_argument("input", type=Path)
+    capture.add_argument("output", type=Path)
+    matched = commands.add_parser("pair")
+    matched.add_argument("control", type=Path)
+    matched.add_argument("mlef", type=Path)
+    args = parser.parse_args()
+    if args.command == "prepare":
+        prepare(args.destination, args.seed)
+    elif args.command == "score":
+        print(json.dumps({"heldout_accuracy": score(args.labels, args.predictions)}))
+    elif args.command == "record":
+        record(args.input, args.output)
+    else:
+        print(json.dumps(pair(args.control, args.mlef)))
+
+
+if __name__ == "__main__":
+    main()
