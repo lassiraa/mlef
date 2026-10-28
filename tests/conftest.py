@@ -5,6 +5,18 @@ from pathlib import Path
 
 import pytest
 
+from mlef.environment import ImageIdentity
+
+
+@pytest.fixture
+def docker_images(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "mlef.runner.image_identity",
+        lambda image, log: ImageIdentity(
+            id="sha256:test", digests=["python@sha256:test"], os="linux", architecture="amd64"
+        ),
+    )
+
 
 @pytest.fixture
 def project(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:

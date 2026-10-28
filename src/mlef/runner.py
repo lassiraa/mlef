@@ -14,6 +14,15 @@ from pathlib import Path
 from typing import BinaryIO, TextIO
 from uuid import uuid4
 
+from .environment import (
+    UV_IMAGE,
+    Environment,
+    build_recipe,
+    container_info,
+    dependency_inputs,
+    file_hash,
+    image_identity,
+)
 from .provenance import capture, extract_source
 
 BASE_IMAGE = "python:3.12-slim"
@@ -48,7 +57,27 @@ def source_files(root: Path, script: Path, includes: list[Path]) -> list[Path]:
         .split("\0")
     )
     files = {Path(name) for name in tracked if name}
-    for path in [script, *includes]:
+    dependency_files = [
+        path.relative_to(root)
+        for path in root.iterdir()
+        if path.is_file()
+        and (
+            path.name
+            in {
+                "pyproject.toml",
+                "uv.lock",
+                "uv.toml",
+                "Pipfile",
+                "Pipfile.lock",
+                "poetry.lock",
+                "pdm.lock",
+                "setup.py",
+                "setup.cfg",
+            }
+            or (path.name.startswith("requirements") and path.suffix in {".txt", ".in"})
+        )
+    ]
+    for path in [script, *includes, *dependency_files]:
         relative_path(root, path)
         source = root / path
         if source.is_symlink():
@@ -181,7 +210,7 @@ def run(
     for filename in ["stdout.log", "stderr.log", "runner.log"]:
         (run_dir / filename).touch()
     command = ["python", script.as_posix(), *arguments]
-    warnings = ["Environment provenance and locked dependencies are not captured yet."]
+    warnings = ["Environment capture is incomplete."]
     metadata: dict[str, object] = {
         "schema_version": 1,
         "id": run_id,
@@ -205,33 +234,60 @@ def run(
     created = False
     cancelled = False
     result = 1
+    environment = Environment()
+    save(run_dir / "environment.json", environment.model_dump())
     with (run_dir / "runner.log").open("ab") as log:
         try:
             git_provenance, inputs = capture(root, run_dir, files)
             metadata.update(git=git_provenance.model_dump(), inputs=inputs.model_dump())
             save(run_dir / "run.json", metadata)
-            if shutil.which("docker") is None:
-                raise RuntimeError(
-                    "Docker executable not found. Install Docker and start its engine."
-                )
-            docker(["info"], log)
             with tempfile.TemporaryDirectory(prefix="build-", dir=run_dir) as temporary:
                 context = Path(temporary)
                 workspace = context / "workspace"
                 workspace.mkdir()
                 extract_source(run_dir / "source.tar.gz", workspace)
+                dependencies = dependency_inputs(workspace)
+                environment.dependencies = dependencies
+                inputs.dependency_hashes = dependencies.hashes
+                metadata["inputs"] = inputs.model_dump()
+                save(run_dir / "run.json", metadata)
+                save(run_dir / "environment.json", environment.model_dump())
+                if shutil.which("docker") is None:
+                    raise RuntimeError(
+                        "Docker executable not found. Install Docker and start its engine."
+                    )
+                docker(["info"], log)
+                docker(["pull", BASE_IMAGE], log)
+                environment.base_image = image_identity(BASE_IMAGE, log)
+                save(run_dir / "environment.json", environment.model_dump())
+                if not environment.base_image.digests:
+                    raise RuntimeError("The base image has no immutable repository digest.")
+                uv_digest = None
+                if dependencies.install_command is not None:
+                    docker(["pull", UV_IMAGE], log)
+                    environment.uv_image = image_identity(UV_IMAGE, log)
+                    save(run_dir / "environment.json", environment.model_dump())
+                    if not environment.uv_image.digests:
+                        raise RuntimeError("The uv image has no immutable repository digest.")
+                    uv_digest = environment.uv_image.digests[0]
                 user = None
                 if hasattr(os, "getuid") and hasattr(os, "getgid"):
                     user = f"{os.getuid()}:{os.getgid()}"
-                ownership = f"--chown={user} " if user is not None else ""
-                workspace_owner = f"RUN chown {user} /workspace\n" if user is not None else ""
                 (context / "Dockerfile").write_text(
-                    f"FROM {BASE_IMAGE}\nWORKDIR /workspace\n"
-                    f"COPY {ownership}workspace/ /workspace/\n{workspace_owner}",
+                    build_recipe(environment.base_image.digests[0], uv_digest, user),
                     encoding="utf-8",
                 )
                 shutil.copy2(context / "Dockerfile", run_dir / "Dockerfile")
+                inputs.build_recipe_sha256 = file_hash(run_dir / "Dockerfile")
+                metadata["inputs"] = inputs.model_dump()
+                save(run_dir / "run.json", metadata)
                 docker(["build", "--tag", image, str(context)], log)
+            environment.execution_image = image_identity(image, log)
+            save(run_dir / "environment.json", environment.model_dump())
+            environment.container = container_info(environment.execution_image.id, log, user)
+            environment.warnings = []
+            warnings.clear()
+            save(run_dir / "environment.json", environment.model_dump())
             create = [
                 "create",
                 "--name",
@@ -248,7 +304,7 @@ def run(
             ]
             if user is not None:
                 create.extend(["--user", user])
-            docker([*create, image, *command], log)
+            docker([*create, environment.execution_image.id, *command], log)
             created = True
             # Do not allocate a TTY: Docker then preserves separate stdout/stderr streams.
             # Handle Ctrl+C in mlef; do not also deliver it to the attached Docker client.
@@ -292,7 +348,10 @@ def run(
             ValueError,
             tarfile.TarError,
         ) as error:
-            metadata["error"] = {"category": "execution", "message": str(error)}
+            metadata["error"] = {
+                "category": "preparation" if process is None else "execution",
+                "message": str(error),
+            }
             log.write((str(error) + "\n").encode("utf-8"))
             print(f"mlef: {error}", file=sys.stderr)
         finally:
