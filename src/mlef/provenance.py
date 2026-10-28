@@ -20,6 +20,7 @@ class SourceInputs(BaseModel):
     included_untracked: list[str]
     dependency_hashes: dict[str, str] = Field(default_factory=dict)
     build_recipe_sha256: str | None = None
+    outputs: list[str] = Field(default_factory=list)
 
 
 def git(root: Path, *arguments: str) -> bytes:

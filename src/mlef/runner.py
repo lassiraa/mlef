@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import BinaryIO, TextIO
 from uuid import uuid4
 
+from pydantic import BaseModel
+
 from .environment import (
     UV_IMAGE,
     Environment,
@@ -24,6 +26,7 @@ from .environment import (
     image_identity,
 )
 from .provenance import capture, extract_source
+from .records import RunError, RunRecord
 
 BASE_IMAGE = "python:3.12-slim"
 
@@ -32,9 +35,10 @@ def now() -> str:
     return datetime.now(UTC).isoformat().replace("+00:00", "Z")
 
 
-def save(path: Path, data: dict[str, object]) -> None:
+def save(path: Path, data: dict[str, object] | BaseModel) -> None:
     temporary = path.with_suffix(".tmp")
-    temporary.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
+    values = data.model_dump(mode="json") if isinstance(data, BaseModel) else data
+    temporary.write_text(json.dumps(values, indent=2, allow_nan=False) + "\n", encoding="utf-8")
     temporary.replace(path)
 
 
@@ -211,21 +215,15 @@ def run(
         (run_dir / filename).touch()
     command = ["python", script.as_posix(), *arguments]
     warnings = ["Environment capture is incomplete."]
-    metadata: dict[str, object] = {
-        "schema_version": 1,
-        "id": run_id,
-        "state": "preparing",
-        "created_at": now(),
-        "started_at": None,
-        "finished_at": None,
-        "command": command,
-        "execution_exit_code": None,
-        "error": None,
-        "warnings": warnings,
-        "outputs": [path.as_posix() for path in outputs],
-        "git": None,
-        "inputs": None,
-    }
+    metadata = RunRecord(
+        id=run_id,
+        state="preparing",
+        created_at=now(),
+        command=command,
+        warnings=warnings,
+        outputs=[path.as_posix() for path in outputs],
+    )
+    warnings = metadata.warnings
     save(run_dir / "run.json", metadata)
     print(f"Run ID: {run_id}\nResults: {run_dir}", flush=True)
     name = f"mlef-{run_id}"
@@ -239,7 +237,8 @@ def run(
     with (run_dir / "runner.log").open("ab") as log:
         try:
             git_provenance, inputs = capture(root, run_dir, files)
-            metadata.update(git=git_provenance.model_dump(), inputs=inputs.model_dump())
+            metadata.git, metadata.inputs = git_provenance, inputs
+            inputs.outputs = metadata.outputs
             save(run_dir / "run.json", metadata)
             with tempfile.TemporaryDirectory(prefix="build-", dir=run_dir) as temporary:
                 context = Path(temporary)
@@ -249,7 +248,6 @@ def run(
                 dependencies = dependency_inputs(workspace)
                 environment.dependencies = dependencies
                 inputs.dependency_hashes = dependencies.hashes
-                metadata["inputs"] = inputs.model_dump()
                 save(run_dir / "run.json", metadata)
                 save(run_dir / "environment.json", environment.model_dump())
                 if shutil.which("docker") is None:
@@ -279,7 +277,6 @@ def run(
                 )
                 shutil.copy2(context / "Dockerfile", run_dir / "Dockerfile")
                 inputs.build_recipe_sha256 = file_hash(run_dir / "Dockerfile")
-                metadata["inputs"] = inputs.model_dump()
                 save(run_dir / "run.json", metadata)
                 docker(["build", "--tag", image, str(context)], log)
             environment.execution_image = image_identity(image, log)
@@ -315,7 +312,7 @@ def run(
                 creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
                 start_new_session=sys.platform != "win32",
             )
-            metadata.update(state="running", started_at=now())
+            metadata.state, metadata.started_at = "running", now()
             save(run_dir / "run.json", metadata)
             attach_exit_code = stream_process(process, run_dir, name, log)
             inspection = subprocess.run(
@@ -329,7 +326,7 @@ def run(
                 raise RuntimeError("Docker did not report a completed script execution.")
             if state.get("Error"):
                 raise RuntimeError(f"Container execution failed: {state['Error']}")
-            metadata["execution_exit_code"] = state["ExitCode"]
+            metadata.execution_exit_code = state["ExitCode"]
             if state["ExitCode"]:
                 raise RuntimeError(f"Script exited with code {state['ExitCode']}; see stderr.log.")
             if attach_exit_code:
@@ -337,7 +334,7 @@ def run(
             result = 0
         except KeyboardInterrupt:
             cancelled = True
-            metadata["error"] = {"category": "cancelled", "message": "Cancelled by user."}
+            metadata.error = RunError(category="cancelled", message="Cancelled by user.")
             if created:
                 docker(["stop", "--time", "5", name], log, check=False)
             result = 130
@@ -348,10 +345,9 @@ def run(
             ValueError,
             tarfile.TarError,
         ) as error:
-            metadata["error"] = {
-                "category": "preparation" if process is None else "execution",
-                "message": str(error),
-            }
+            metadata.error = RunError(
+                category="preparation" if process is None else "execution", message=str(error)
+            )
             log.write((str(error) + "\n").encode("utf-8"))
             print(f"mlef: {error}", file=sys.stderr)
         finally:
@@ -379,10 +375,7 @@ def run(
                     except (OSError, RuntimeError, subprocess.SubprocessError) as error:
                         result = 130 if cancelled else 1
                         message = f"Could not collect output {output}: {error}"
-                        metadata["error"] = {
-                            "category": "collection",
-                            "message": message,
-                        }
+                        metadata.error = RunError(category="collection", message=message)
                         print(f"mlef: {message}", file=sys.stderr)
                 if docker(["rm", "--force", name], log, check=False).returncode:
                     warnings.append(f"Container cleanup failed: {name}")
@@ -391,10 +384,8 @@ def run(
                 and docker(["image", "rm", image], log, check=False).returncode
             ):
                 warnings.append(f"Image cleanup failed or image was not built: {image}")
-            metadata.update(
-                state="cancelled" if cancelled else "succeeded" if result == 0 else "failed",
-                finished_at=now(),
-            )
+            metadata.state = "cancelled" if cancelled else "succeeded" if result == 0 else "failed"
+            metadata.finished_at = now()
             save(run_dir / "run.json", metadata)
-    print(f"Run {run_id}: {metadata['state']}", flush=True)
+    print(f"Run {run_id}: {metadata.state}", flush=True)
     return result

@@ -35,6 +35,7 @@ version = "0.1.0.dev0"
 source = { editable = "." }
 dependencies = [
     { name = "pydantic" },
+    { name = "typing-extensions" },
 ]
 
 [package.optional-dependencies]
@@ -50,6 +51,7 @@ requires-dist = [
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "ruff", marker = "extra == 'dev'", specifier = ">=0.17.1" },
     { name = "ty", marker = "extra == 'dev'", specifier = ">=0.0.89" },
+    { name = "typing-extensions", specifier = ">=4.12" },
 ]
 provides-extras = ["dev"]
 
