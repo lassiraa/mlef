@@ -6,8 +6,9 @@ and installs supported locked dependencies.
 
 Release candidate: `0.1.0rc1`. Requires Python 3.11-3.14, Git, uv 0.13.6 for
 development, and Docker running Linux containers. CLI and distribution checks run
-on Linux, macOS, and Windows. Full container integration is validated on Linux;
-Windows/macOS Docker execution remains a preview until equivalent host checks pass.
+on Linux, macOS, and Windows. Container integration is validated on Linux and on
+Windows with Docker Desktop's Linux engine. macOS Docker execution remains a
+preview until equivalent host checks pass.
 
 ```text
 uv tool install .
@@ -150,6 +151,9 @@ sdist installs on all three hosts. The container suite includes failure,
 cancellation, declared outputs, concurrent-run isolation, locked installation,
 saved-recipe rebuild, malformed optional metrics, required-result storage failure,
 and the complete tabular run/inspect/compare/retrieve loop.
+The full suite also passed on Windows/Python 3.12 with Docker Desktop's Linux
+engine 29.8.0: 81 passed, with three Windows-inapplicable checks skipped (POSIX
+signal delivery, named pipes, and the Unix symlink test).
 
 Ruff enforces formatting, imports, annotations (including tests), bug-risk checks,
 pytest conventions, and simplification rules. ty checks source, tests, and examples
@@ -218,8 +222,8 @@ Release-candidate notes: versioned offline inspection, safe artifact retrieval,
 locked execution provenance, experiment intent, normalized evidence and honest
 baseline/candidate comparisons form the first complete feedback loop. Version-1
 run reads are preserved. Python 3.11-3.14 is the tested CLI range; experiment Python
-is independently pinned by the saved image recipe. Windows/macOS container
-validation and broader dependency layouts remain follow-up work.
+is independently pinned by the saved image recipe. macOS container validation
+and broader dependency layouts remain follow-up work.
 
 Build candidate artifacts using `uv build --out-dir .mlef/dist`, then verify them
 with `uv run --locked --extra dev python scripts/check_dist.py .mlef/dist`.
