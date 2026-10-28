@@ -25,6 +25,7 @@ from .environment import (
     file_hash,
     image_identity,
 )
+from .evidence import experiment_spec, normalize
 from .provenance import capture, extract_source
 from .records import RunError, RunRecord
 
@@ -197,7 +198,12 @@ def stream_process(
 
 
 def run(
-    root: Path, script: Path, arguments: list[str], includes: list[Path], outputs: list[Path]
+    root: Path,
+    script: Path,
+    arguments: list[str],
+    includes: list[Path],
+    outputs: list[Path],
+    experiment: Path | None = None,
 ) -> int:
     if not (root / ".mlef" / "runs").is_dir():
         raise ValueError("Project is not initialized; run mlef init first.")
@@ -207,6 +213,7 @@ def run(
     for output in outputs:
         relative_path(root, output)
     files = source_files(root, script, includes)
+    specification = experiment_spec(root, experiment) if experiment is not None else None
     run_id = str(uuid4())
     run_dir = root / ".mlef" / "runs" / run_id
     artifacts = run_dir / "artifacts"
@@ -222,6 +229,7 @@ def run(
         command=command,
         warnings=warnings,
         outputs=[path.as_posix() for path in outputs],
+        experiment=specification,
     )
     warnings = metadata.warnings
     save(run_dir / "run.json", metadata)
@@ -386,6 +394,15 @@ def run(
                 warnings.append(f"Image cleanup failed or image was not built: {image}")
             metadata.state = "cancelled" if cancelled else "succeeded" if result == 0 else "failed"
             metadata.finished_at = now()
+            try:
+                save(run_dir / "result.json", normalize(root, run_id))
+            except (OSError, ValueError) as error:
+                result = 130 if cancelled else 1
+                metadata.state = "cancelled" if cancelled else "failed"
+                metadata.error = RunError(
+                    category="storage", message=f"Cannot save result evidence: {error}"
+                )
+                print(f"mlef: {metadata.error.message}", file=sys.stderr)
             save(run_dir / "run.json", metadata)
     print(f"Run {run_id}: {metadata.state}", flush=True)
     return result

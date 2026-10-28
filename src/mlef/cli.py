@@ -10,6 +10,8 @@ from typing import NoReturn
 from typing_extensions import override
 
 from . import __version__
+from .comparison import compare
+from .evidence import read_result
 from .runner import run
 from .storage import QueryError, artifacts, inspect, list_runs, retrieve
 
@@ -66,9 +68,13 @@ def main(argv: list[str] | None = None) -> int:
     execute.add_argument("script", type=Path)
     execute.add_argument("--include", action="append", default=[], type=Path, metavar="PATH")
     execute.add_argument("--output", action="append", default=[], type=Path, metavar="DIRECTORY")
-    for name in ["list", "status", "get"]:
+    execute.add_argument("--experiment", type=Path, metavar="JSON_FILE")
+    for name in ["list", "status", "get", "compare"]:
         query = commands.add_parser(name, help=f"{name.capitalize()} saved local runs/artifacts.")
-        if name != "list":
+        if name == "compare":
+            query.add_argument("baseline")
+            query.add_argument("candidate")
+        elif name != "list":
             query.add_argument("run_id")
         if name == "get":
             query.add_argument("artifact", nargs="?")
@@ -102,8 +108,16 @@ def main(argv: list[str] | None = None) -> int:
             return 0
         if args.command == "status":
             record = inspect(root, args.run_id)
+            evidence = read_result(root, args.run_id)
             if args.json:
-                print(record.model_dump_json())
+                print(
+                    json.dumps(
+                        {
+                            **record.model_dump(mode="json"),
+                            "result": evidence.model_dump(mode="json"),
+                        }
+                    )
+                )
             else:
                 print(f"{record.id}: {record.state}\nCommand: {record.command}")
                 print(f"Created: {record.created_at}\nStarted: {record.started_at}")
@@ -113,6 +127,54 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"Error ({record.error.category}): {record.error.message}")
                 for warning in record.warnings:
                     print(f"Warning: {warning}")
+                print(f"Evidence: {evidence.evidence_status}")
+                for name, value in list(evidence.metrics.items())[:20]:
+                    print(f"  {name}: {value}")
+                if len(evidence.metrics) > 20:
+                    print(f"  {len(evidence.metrics) - 20} metrics omitted; use --json.")
+                for diagnostic in evidence.diagnostics:
+                    print(f"{diagnostic.code}: {diagnostic.message}")
+                print(f"Artifacts: .mlef/runs/{record.id}/artifacts/")
+            return 0
+        if args.command == "compare":
+            comparison = compare(root, args.baseline, args.candidate)
+            if args.json:
+                print(comparison.model_dump_json())
+            else:
+                print(
+                    f"{comparison.baseline_id} -> {comparison.candidate_id}: "
+                    f"{comparison.compatibility}"
+                )
+                print(
+                    f"Execution seconds: {comparison.baseline_seconds} -> "
+                    f"{comparison.candidate_seconds}"
+                )
+                for metric in comparison.metrics[:20]:
+                    print(
+                        f"{metric.name}: {metric.baseline} -> {metric.candidate}; "
+                        f"delta={metric.delta}; relative={metric.relative_delta}; "
+                        f"{metric.compatibility}; {metric.observation}"
+                    )
+                    for reason in metric.reasons:
+                        print(f"  {reason}")
+                if len(comparison.metrics) > 20:
+                    print(f"{len(comparison.metrics) - 20} metrics omitted; use --json.")
+                print(
+                    f"Changed parameters: {len(comparison.parameters)}; "
+                    f"provenance fields: {list(comparison.provenance)}"
+                )
+                for name, change in list(comparison.parameters.items())[:20]:
+                    print(f"  {name}: {change.baseline!r} -> {change.candidate!r}")
+                if len(comparison.parameters) > 20:
+                    print(
+                        f"{len(comparison.parameters) - 20} parameter changes omitted; use --json."
+                    )
+                print(
+                    f"Artifacts: .mlef/runs/{args.baseline}/artifacts/ "
+                    f"and .mlef/runs/{args.candidate}/artifacts/"
+                )
+                for limitation in comparison.limitations:
+                    print(limitation)
             return 0
         if args.command == "get":
             if args.artifact is None:
@@ -122,6 +184,10 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(retrieve(root, args.run_id, args.artifact, args.output))
             return 0
+        if args.experiment is not None:
+            return run(
+                root, args.script, script_arguments, args.include, args.output, args.experiment
+            )
         return run(root, args.script, script_arguments, args.include, args.output)
     except QueryError as error:
         if getattr(args, "json", False):

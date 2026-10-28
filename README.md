@@ -74,6 +74,33 @@ error on stdout. Invalid arguments return exit 2.
 is the artifact basename in the current directory. Existing destinations, escaping
 paths, links and special files are refused. Full UUID4 run IDs are required.
 
+Use `mlef run train.py --experiment experiment.json` to store a hypothesis,
+`parent_run_id`, `changed_variables`, canonical `parameters`, training `seeds`,
+`dataset` reference/fingerprint, `evaluation` identity, and `metric_directions`.
+The version-1 specification rejects unknown fields, invalid types and non-finite
+numbers before allocating a run. Parent IDs must already exist. Metadata is saved
+by value and does not inject settings into the script or clone a parent's source.
+
+Scripts may write `metrics.json` under `MLEF_OUTPUT_DIR`: a flat object of finite
+numbers, such as `{"accuracy": 0.9}`. Booleans, duplicate keys, nested values, NaN
+and infinity are invalid. `result.json` records normalized metrics, artifact
+references and stable diagnostics. Missing/invalid optional metrics remain
+retrievable and do not turn a successful script into a failed run. Missing or
+corrupt saved results are displayed as unavailable/invalid evidence.
+
+`mlef compare <baseline-id> <candidate-id> [--json]` reports the union of metrics,
+absolute deltas and relative deltas `(candidate - baseline) / abs(baseline)`
+(unavailable for a zero baseline), parameter changes, provenance, execution time,
+intentional changes and artifact references. Human status/comparison summaries
+show at most 20 metrics; JSON includes all metrics without embedding logs.
+Per-metric compatibility is `declared-compatible`, `incompatible` or `unknown`.
+Compatible declarations require matching nonempty dataset fingerprints,
+evaluation `protocol_id` and `split_fingerprint`, explicitly supplied evaluation
+`seeds` (an empty map is valid), metric definitions, and maximize/minimize
+directions. Known conflicts take precedence over missing information; unsuccessful
+runs and missing evidence cannot support improvement claims. These checks compare
+declarations, not actual split use, statistical significance or leakage freedom.
+
 Try the small locked example in its own Git project (from this checkout):
 
 ```text
