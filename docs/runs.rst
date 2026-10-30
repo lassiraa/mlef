@@ -1,7 +1,7 @@
 Run and CLI reference
 =====================
 
-`Documentation home <../README.md>`_
+:doc:`Documentation home <index>`
 
 Commands
 --------
@@ -75,6 +75,8 @@ containers never imply success. Collected outputs are never overwritten; a
 collection failure retains the container for inspection/retry. Recovery marks an
 unfinished run failed with an ``abandoned`` diagnostic and can be safely repeated.
 Terminal runs without pending cleanup are returned unchanged, including offline.
+
+.. _captured-environment:
 
 Captured source and environment
 -------------------------------
@@ -172,6 +174,8 @@ same user ID/group as the original run when reproducing permissions. The saved
 recipe pins the original base and uv image digests and installs from the archived
 lock. Retrieve declared ``--output`` directories before removing the container.
 
+.. _run-exit-codes:
+
 Exit codes and troubleshooting
 ------------------------------
 
@@ -189,7 +193,7 @@ Exit codes and troubleshooting
    * - 130
      - Foreground run cancelled by the user.
 
-For installation errors, see `setup troubleshooting <setup.rst#if-setup-fails>`_.
+For installation errors, see :ref:`setup troubleshooting <setup-troubleshooting>`.
 Use the complete UUID printed by the runner. Retrieval never overwrites an existing
 destination. If metrics are missing/invalid, inspect ``result.json`` diagnostics
 and retrieve the original artifact. If a run remains unfinished after its owner

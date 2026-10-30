@@ -1,7 +1,7 @@
 Installation and project setup
 ==============================
 
-`Documentation home <../README.md>`_
+:doc:`Documentation home <index>`
 
 Requirements
 ------------
@@ -71,7 +71,7 @@ installation of the project itself. Path/Git/workspace dependencies, source buil
 separate ``uv.toml`` configuration and other dependency managers are unsupported.
 Do not add the MLEF checkout as a path dependency to the experiment. Export the
 portable evaluator when needed; it becomes an ordinary captured input. See
-`environment details <runs.rst#captured-source-and-environment>`_.
+:ref:`environment details <captured-environment>`.
 
 Minimal locked-dependency example
 ---------------------------------
@@ -105,8 +105,10 @@ For regression, copy into a different directory and run the last command with
 ``demo.py --regression``. Both demos initialize storage and export ``evaluate.py``.
 They perform multiple Docker runs, print IDs/comparisons and save ``protocol.json``,
 ``model.joblib``, ``model-recipe.json`` and ``inference.csv``. Retrieved files are
-intentionally never overwritten. See `tabular workflows <tabular.rst>`_ for data
+intentionally never overwritten. See :doc:`tabular workflows <tabular>` for data
 attribution and interpretation.
+
+.. _setup-troubleshooting:
 
 If setup fails
 --------------
@@ -119,4 +121,4 @@ If setup fails
 * Existing destination: choose a new output path or fresh copied demo project.
 
 Inspect ``mlef status RUN --json`` and saved logs for execution failures. More
-failure modes and exit codes are in the `CLI reference <runs.rst#exit-codes-and-troubleshooting>`_.
+failure modes and exit codes are in the :ref:`CLI reference <run-exit-codes>`.

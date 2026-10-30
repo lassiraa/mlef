@@ -1,7 +1,7 @@
 Python API reference
 ====================
 
-`Documentation home <../README.md>`_
+:doc:`Documentation home <index>`
 
 Python callers can use the supported synchronous ``mlef.api`` entry points:
 
@@ -97,12 +97,12 @@ shorthands, not exported types. Every ``root`` defaults to ``None``.
 and ``network="default"``. Optional ``timeout_seconds`` and ``cpus`` are positive
 floats; ``memory_bytes``, ``max_log_bytes`` and ``max_runner_log_bytes`` are positive
 integers. ``network`` accepts ``"default"`` or ``"none"``. See the
-`run reference <runs.rst>`_ for enforcement scope and cleanup grace periods.
+:doc:`run reference <runs>` for enforcement scope and cleanup grace periods.
 
 ``compare_tabular`` checks actual fold/prediction evidence; ``compare`` checks
 declared experiment compatibility. ``limit`` ranges from 1 to 100;
 ``minimum_count`` ranges from 2 to 1,000,000. Tabular inspection is offline.
-See the `tabular guide <tabular.rst>`_ for score definitions and interpretation.
+See the :doc:`tabular guide <tabular>` for score definitions and interpretation.
 
 Portable tabular helper and contracts
 -------------------------------------
@@ -116,8 +116,8 @@ experiment environment; the host does not need sklearn or XGBoost.
 ``mlef.tabular`` exports the Pydantic contracts ``Protocol``, ``Split``, ``Fold``,
 ``Evaluation``, ``Prediction`` and ``Profile``. Note that tabular ``Evaluation``
 describes actual fold evidence; ``mlef.records.Evaluation`` describes experiment
-intent. Public JSON contracts live in `schemas <../schemas>`_; generate JSON with
+intent. Public JSON contracts live in `schemas <https://github.com/lassiraa/mlef/tree/main/schemas>`_; generate JSON with
 ``model_dump(mode="json")`` or ``model_dump_json()``. Importing the API and
 tabular contracts requires no ML dependencies.
 
-For host installation and running copied demos, see `setup <setup.rst>`_.
+For host installation and running copied demos, see :doc:`setup <setup>`.
