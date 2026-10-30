@@ -537,3 +537,68 @@ def test_real_regression_selection_and_inference(project: Path) -> None:
     )
     assert inferred.state == "succeeded", inferred.model_dump_json()
     assert "inference.csv" in api.artifacts(inferred.id)
+
+
+def test_profiles_report_known_training_observations(tmp_path: Path) -> None:
+    from mlef.tabular_runtime import profile_data
+
+    data = tmp_path / "profile.csv"
+    data.write_text(
+        "id,x,constant,code,target\n"
+        + "".join(
+            f"{index},{'' if index < 18 else index},7,code-{index},{index % 2}\n"
+            for index in range(24)
+        )
+    )
+    protocol = prepare(
+        data, identifier="id", target="target", numeric=["x", "constant"], categorical=["code"]
+    )
+    profile = profile_data(data, protocol)
+    columns = {column.name: column for column in profile.columns}
+    assert columns["x"].missing == 18
+    assert columns["x"].observations == ["mostly_missing"]
+    assert columns["constant"].observations == ["constant"]
+    assert columns["code"].observations == ["high_cardinality"]
+    assert profile.target.positive == 12
+    assert profile.target.negative == 12
+
+
+def test_profile_output_is_bounded_for_wide_data(tmp_path: Path) -> None:
+    from mlef.tabular_runtime import profile_data
+
+    data = tmp_path / "wide.csv"
+    columns = [f"feature_{index}_" + "x" * 500 for index in range(100)]
+    with data.open("w", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow(["id", *columns, "target"])
+        writer.writerows([[str(index), *([1] * 100), index % 2] for index in range(24)])
+    protocol = prepare(data, identifier="id", target="target", numeric=columns)
+    profile = profile_data(data, protocol)
+    assert len(profile.columns) == 20
+    assert profile.omitted_columns == 80
+    assert len(profile.model_dump_json()) < 15000
+    assert all(len(column.name) <= 200 for column in profile.columns)
+
+
+def test_profile_and_error_feedback_match_cli(
+    project: Path, data: Path, cli: Callable[..., subprocess.CompletedProcess[str]]
+) -> None:
+    first, second = stored(project, data), stored(project, data)
+    profile = api.tabular_profile(first)
+    assert profile.model_dump(mode="json") == json.loads(
+        cli("tabular", "profile", first, "--json").stdout
+    )
+    feedback = api.tabular_diagnostics(first, second, minimum_count=2, limit=1)
+    assert len(feedback.slices) == 1
+    assert feedback.slices[0].name == "all"
+    assert feedback.slices[0].count == 24
+    assert feedback.slices[0].delta == 0
+    assert feedback.omitted_slices == 6
+    assert feedback.model_dump(mode="json") == json.loads(
+        cli(
+            "tabular", "diagnose", first, second, "--minimum-count", "2", "--limit", "1", "--json"
+        ).stdout
+    )
+    assert api.tabular_diagnostics(first, second, minimum_count=25).slices == []
+    with pytest.raises(api.MlefError, match="Minimum slice"):
+        api.tabular_diagnostics(first, second, minimum_count=0)

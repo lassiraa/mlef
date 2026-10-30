@@ -43,6 +43,7 @@ def main() -> None:
     protocol = tabular.Protocol.model_validate_json(Path("protocol.json").read_text())
     candidates: dict[str, api.RunStatus] = {}
     baseline: str | None = None
+    spec: Experiment | None = None
     factories = (
         ["make_dummy_regressor", "make_regressor", "make_xgboost_regressor"]
         if args.regression
@@ -87,11 +88,22 @@ def main() -> None:
             print(api.compare_tabular(baseline, result.id).model_dump_json())
     choose = max if protocol.direction == "maximize" else min
     best = choose(candidates, key=lambda name: candidates[name].result.metrics[metric])
+    assert spec is not None
+    refit_spec = Experiment.model_validate(
+        {
+            **spec.model_dump(),
+            "hypothesis": f"Refit selected {best}",
+            "parent_run_id": candidates[best].id,
+            "changed_variables": {"factory": best, "refit": True},
+        }
+    )
+    Path("experiment.json").write_text(refit_spec.model_dump_json(), encoding="utf-8")
     selected = api.run(
         "evaluate.py",
         includes=[data, "protocol.json", "model.py"],
         options=options,
         arguments=["evaluate", "--factory", f"model:{best}", "--refit", "--data", data],
+        experiment="experiment.json",
     )
     if selected.state != "succeeded":
         raise RuntimeError(selected.model_dump_json())

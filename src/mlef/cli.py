@@ -16,6 +16,7 @@ from .recovery import recover
 from .runner import run
 from .storage import QueryError, artifacts, inspect, list_runs, retrieve
 from .tabular_comparison import compare_tabular
+from .tabular_diagnostics import diagnose, read_profile
 
 
 def init(root: Path) -> None:
@@ -58,6 +59,15 @@ def main(argv: list[str] | None = None) -> int:
     tabular_compare.add_argument("candidate")
     tabular_compare.add_argument("--limit", type=int, default=20)
     tabular_compare.add_argument("--json", action="store_true")
+    profile_parser = tabular_commands.add_parser("profile")
+    profile_parser.add_argument("run_id")
+    profile_parser.add_argument("--json", action="store_true")
+    diagnostics = tabular_commands.add_parser("diagnose")
+    diagnostics.add_argument("baseline")
+    diagnostics.add_argument("candidate")
+    diagnostics.add_argument("--minimum-count", type=int, default=20)
+    diagnostics.add_argument("--limit", type=int, default=20)
+    diagnostics.add_argument("--json", action="store_true")
     execute = commands.add_parser("run", help="Run a script in the standard Python container.")
     execute.add_argument("script", type=Path)
     execute.add_argument("--include", action="append", default=[], type=Path, metavar="PATH")
@@ -94,6 +104,28 @@ def main(argv: list[str] | None = None) -> int:
     try:
         root = project_root()
         if args.command == "tabular":
+            if args.tabular_command == "profile":
+                profile = read_profile(root, args.run_id)
+                print(
+                    profile.model_dump_json()
+                    if args.json
+                    else f"{profile.row_count} rows; {profile.feature_count} features"
+                )
+                return 0
+            if args.tabular_command == "diagnose":
+                feedback = diagnose(
+                    root,
+                    args.baseline,
+                    args.candidate,
+                    minimum_count=args.minimum_count,
+                    limit=args.limit,
+                )
+                print(
+                    feedback.model_dump_json()
+                    if args.json
+                    else f"{feedback.comparison.observation}; {len(feedback.slices)} error slices"
+                )
+                return 0
             result = compare_tabular(root, args.baseline, args.candidate, limit=args.limit)
             print(
                 result.model_dump_json()

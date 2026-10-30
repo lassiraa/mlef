@@ -2,9 +2,9 @@
 
 from pathlib import Path
 
-from .tabular_runtime import Evaluation, Fold, Prediction, Protocol, Split
+from .tabular_runtime import Evaluation, Fold, Prediction, Profile, Protocol, Split
 
-__all__ = ["Evaluation", "Fold", "Prediction", "Protocol", "Split", "export_helper"]
+__all__ = ["Evaluation", "Fold", "Prediction", "Profile", "Protocol", "Split", "export_helper"]
 
 
 def export_helper(destination: Path | str) -> Path:

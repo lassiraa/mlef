@@ -1,0 +1,231 @@
+{
+  "$defs": {
+    "ColumnProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "cardinality": {
+          "minimum": 0,
+          "title": "Cardinality",
+          "type": "integer"
+        },
+        "kind": {
+          "enum": [
+            "numeric",
+            "categorical"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "missing": {
+          "minimum": 0,
+          "title": "Missing",
+          "type": "integer"
+        },
+        "name": {
+          "maxLength": 200,
+          "title": "Name",
+          "type": "string"
+        },
+        "name_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Name Sha256",
+          "type": "string"
+        },
+        "observations": {
+          "items": {
+            "enum": [
+              "constant",
+              "mostly_missing",
+              "high_cardinality"
+            ],
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Observations",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "name_sha256",
+        "kind",
+        "missing",
+        "cardinality",
+        "observations"
+      ],
+      "title": "ColumnProfile",
+      "type": "object"
+    },
+    "TargetProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "maximum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Maximum"
+        },
+        "mean": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Mean"
+        },
+        "minimum": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Minimum"
+        },
+        "negative": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Negative"
+        },
+        "positive": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Positive"
+        }
+      },
+      "title": "TargetProfile",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "columns": {
+      "items": {
+        "$ref": "#/$defs/ColumnProfile"
+      },
+      "maxItems": 20,
+      "title": "Columns",
+      "type": "array"
+    },
+    "duplicate_feature_rows": {
+      "minimum": 0,
+      "title": "Duplicate Feature Rows",
+      "type": "integer"
+    },
+    "feature_count": {
+      "exclusiveMinimum": 0,
+      "title": "Feature Count",
+      "type": "integer"
+    },
+    "group_count": {
+      "anyOf": [
+        {
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Group Count"
+    },
+    "omitted_columns": {
+      "minimum": 0,
+      "title": "Omitted Columns",
+      "type": "integer"
+    },
+    "protocol_id": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Protocol Id",
+      "type": "string"
+    },
+    "row_count": {
+      "exclusiveMinimum": 0,
+      "title": "Row Count",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "split_kind": {
+      "enum": [
+        "stratified",
+        "group",
+        "time"
+      ],
+      "title": "Split Kind",
+      "type": "string"
+    },
+    "target": {
+      "$ref": "#/$defs/TargetProfile"
+    },
+    "time_end": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time End"
+    },
+    "time_start": {
+      "anyOf": [
+        {
+          "maxLength": 64,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time Start"
+    }
+  },
+  "required": [
+    "protocol_id",
+    "row_count",
+    "feature_count",
+    "duplicate_feature_rows",
+    "columns",
+    "omitted_columns",
+    "target",
+    "split_kind"
+  ],
+  "title": "Profile",
+  "type": "object"
+}
