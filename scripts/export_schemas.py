@@ -25,7 +25,7 @@ def main() -> None:
         ("result-v1", Result),
         ("comparison-v1", Comparison),
         ("environment-v1", Environment),
-        ("tabular-protocol-v1", Protocol),
+        ("tabular-protocol-v2", Protocol),
         ("tabular-evaluation-v2", TabularEvaluation),
         ("tabular-comparison-v1", TabularComparison),
     ]:

@@ -80,7 +80,12 @@ def load_evaluation(root: Path, identifier: str) -> tuple[Evaluation, list[Predi
             if fold.train_count != len(split.train) or fold.score_count != len(split.score):
                 raise ValueError("Fold counts do not match actual assignments.")
             if fold.state == "succeeded":
-                if fold.score is None or fold.error is not None or not 0 <= fold.score <= 1:
+                if (
+                    fold.score is None
+                    or fold.error is not None
+                    or fold.score < 0
+                    or (protocol.task == "binary" and fold.score > 1)
+                ):
                     raise ValueError("Invalid successful-fold score/diagnostic.")
                 successful[fold.id] = set(split.score)
             elif fold.score is not None or fold.error is None:
@@ -107,8 +112,10 @@ def load_evaluation(root: Path, identifier: str) -> tuple[Evaluation, list[Predi
                     prediction.fold not in successful
                     or prediction.row_id not in successful[prediction.fold]
                     or prediction.row_id in observed[prediction.fold]
-                    or prediction.truth not in (0, 1)
-                    or not 0 <= prediction.prediction <= 1
+                    or (
+                        protocol.task == "binary"
+                        and (prediction.truth not in (0, 1) or not 0 <= prediction.prediction <= 1)
+                    )
                 ):
                     raise ValueError("Invalid or duplicate row-aligned prediction.")
                 observed[prediction.fold].add(prediction.row_id)
@@ -119,14 +126,16 @@ def load_evaluation(root: Path, identifier: str) -> tuple[Evaluation, list[Predi
             if fold.id in successful:
                 scored = [row for row in rows if row.fold == fold.id]
                 recomputed = measure(
-                    [row.truth for row in scored], [row.prediction for row in scored]
+                    [row.truth for row in scored],
+                    [row.prediction for row in scored],
+                    protocol.metric,
                 )
                 if fold.score is None or abs(recomputed - fold.score) > 1e-10:
                     raise ValueError("Reported score differs from saved predictions.")
         return result, rows
     except QueryError:
         raise
-    except (ValueError, OSError, KeyError, TypeError) as error:
+    except (ValueError, OSError, KeyError, TypeError, ArithmeticError) as error:
         raise QueryError("invalid_tabular_evidence", str(error)) from error
 
 
@@ -183,7 +192,7 @@ def compare_tabular(
     result.baseline_mean = sum(pair.baseline for pair in pairs) / len(pairs)
     result.candidate_mean = sum(pair.candidate for pair in pairs) / len(pairs)
     result.delta = result.candidate_mean - result.baseline_mean
-    improvement = result.delta
+    improvement = result.delta if result.direction == "maximize" else -result.delta
     result.observation = (
         "improved" if improvement > 0 else "regressed" if improvement < 0 else "unchanged"
     )

@@ -53,10 +53,10 @@ class Split(Contract):
 
 
 class Protocol(Contract):
-    schema_version: Literal[1] = 1
-    task: Literal["binary"] = "binary"
-    metric: Literal["roc_auc"] = "roc_auc"
-    direction: Literal["maximize"] = "maximize"
+    schema_version: Literal[1, 2] = 2
+    task: Literal["binary", "regression"] = "binary"
+    metric: Literal["roc_auc", "rmse"] = "roc_auc"
+    direction: Literal["maximize", "minimize"] = "maximize"
     dataset_sha256: str = Field(pattern="^[a-f0-9]{64}$")
     id_column: str
     target: str
@@ -72,6 +72,11 @@ class Protocol(Contract):
 
     @model_validator(mode="after")
     def assignments(self) -> Protocol:
+        expected = ("roc_auc", "maximize") if self.task == "binary" else ("rmse", "minimize")
+        if (self.metric, self.direction) != expected or (
+            self.schema_version == 1 and self.task != "binary"
+        ):
+            raise ValueError("Task, metric, direction and protocol version must agree.")
         features = self.numeric + self.categorical
         if (
             not features
@@ -161,7 +166,8 @@ def parse_evaluation(values: JsonValue) -> Evaluation:
 
 
 class ModelRecipe(Contract):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 2
+    task: Literal["binary", "regression"] = "binary"
     protocol_id: str
     features: list[str]
     id_column: str
@@ -194,10 +200,16 @@ def predict(data: Path, model: Path, recipe_path: Path, output: Path) -> None:
     recipe = ModelRecipe.model_validate(read_object(recipe_path))
     frame = feature_frame(read_rows(data, recipe.id_column), recipe.numeric, recipe.categorical)
     estimator = joblib.load(model)
-    scores = estimator.predict_proba(frame[recipe.features])[:, list(estimator.classes_).index(1)]
+    scores = (
+        estimator.predict_proba(frame[recipe.features])[:, list(estimator.classes_).index(1)]
+        if recipe.task == "binary"
+        else estimator.predict(frame[recipe.features])
+    )
     with output.open("x", encoding="utf-8", newline="") as stream:
         writer = csv.writer(stream)
-        writer.writerow([recipe.id_column, "positive_probability"])
+        writer.writerow(
+            [recipe.id_column, "positive_probability" if recipe.task == "binary" else "prediction"]
+        )
         writer.writerows(zip(frame.index, scores, strict=True))
 
 
@@ -237,9 +249,14 @@ def fit_estimator(
         validation = [split.train[index] for index in val_indices]
     else:
         train, validation = train_test_split(
-            split.train, test_size=0.2, random_state=protocol.seed, stratify=target.loc[split.train]
+            split.train,
+            test_size=0.2,
+            random_state=protocol.seed,
+            stratify=target.loc[split.train] if protocol.task == "binary" else None,
         )
-    if any(set(target.loc[partition]) != {0, 1} for partition in [train, validation]):
+    if protocol.task == "binary" and any(
+        set(target.loc[partition]) != {0, 1} for partition in [train, validation]
+    ):
         raise ValueError("Early-stopping partitions must contain both classes.")
     x_train, x_validation = frame.loc[train, features], frame.loc[validation, features]
     if isinstance(estimator, Pipeline):
@@ -263,8 +280,19 @@ def digest(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
-def measure(truth: list[float], predictions: list[float]) -> float:
+def measure(truth: list[float], predictions: list[float], metric: str = "roc_auc") -> float:
     """ROC-AUC by average ranks, also usable by offline readers without sklearn."""
+    if not truth or len(truth) != len(predictions):
+        raise ValueError("Expected nonempty aligned predictions.")
+    if metric == "rmse":
+        result = math.sqrt(
+            math.fsum((a - b) ** 2 for a, b in zip(truth, predictions, strict=True)) / len(truth)
+        )
+        if not math.isfinite(result):
+            raise ValueError("RMSE is not finite.")
+        return result
+    if metric != "roc_auc":
+        raise ValueError("Unsupported metric.")
     positives = sum(truth)
     negatives = len(truth) - positives
     if not positives or not negatives or len(truth) != len(predictions):
@@ -323,9 +351,13 @@ def validate_data(path: Path, protocol: Protocol) -> dict[str, dict[str, str]]:
     if list(rows) != protocol.rows:
         raise ValueError("Dataset row identity/order differs from the protocol.")
     labels = {row.get(protocol.target) for row in rows.values()}
-    if len(labels) != 2 or protocol.positive_label not in labels or "" in labels or None in labels:
+    if protocol.task == "binary" and (
+        len(labels) != 2 or protocol.positive_label not in labels or "" in labels or None in labels
+    ):
         raise ValueError("Binary evaluation requires two labels and the declared positive class.")
     for row in rows.values():
+        if protocol.task == "regression" and not math.isfinite(float(row.get(protocol.target, ""))):
+            raise ValueError("Regression targets must be finite numbers.")
         for feature in protocol.numeric + protocol.categorical:
             if feature not in row:
                 raise ValueError(f"Unknown feature: {feature}")
@@ -334,7 +366,10 @@ def validate_data(path: Path, protocol: Protocol) -> dict[str, dict[str, str]]:
                 raise ValueError("Numeric features must be finite or empty.")
     for split in protocol.splits:
         for partition in [split.train, split.score]:
-            if {rows[key][protocol.target] for key in partition} != labels:
+            if (
+                protocol.task == "binary"
+                and {rows[key][protocol.target] for key in partition} != labels
+            ):
                 raise ValueError("Each training/scoring partition must contain both classes.")
         if protocol.kind == "group":
             column = protocol.group_column
@@ -366,15 +401,20 @@ def prepare(
     positive_label: str = "1",
     folds: int = 3,
     seed: int = 17,
+    task: Literal["binary", "regression"] = "binary",
 ) -> Protocol:
-    from sklearn.model_selection import StratifiedKFold
+    from sklearn.model_selection import KFold, StratifiedKFold
 
     rows = read_rows(path, identifier)
     keys = list(rows)
     labels = [row[target] for row in rows.values()]
-    if not 2 <= folds <= min(Counter(labels).values()):
+    if not 2 <= folds <= (min(Counter(labels).values()) if task == "binary" else len(keys)):
         raise ValueError("Fold count exceeds the smallest class or is less than two.")
-    splitter = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
+    splitter = (
+        StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
+        if task == "binary"
+        else KFold(n_splits=folds, shuffle=True, random_state=seed)
+    )
     protocol = Protocol(
         dataset_sha256=digest(path),
         id_column=identifier,
@@ -383,6 +423,9 @@ def prepare(
         categorical=categorical or [],
         positive_label=positive_label,
         seed=seed,
+        task=task,
+        metric="roc_auc" if task == "binary" else "rmse",
+        direction="maximize" if task == "binary" else "minimize",
         rows=keys,
         splits=[
             Split(id=str(index), train=[keys[i] for i in train], score=[keys[i] for i in score])
@@ -409,8 +452,8 @@ def evaluate(
     refit: bool = False,
 ) -> Evaluation:
     import numpy as np
+    import pandas as pd
     from sklearn.base import clone
-    from sklearn.metrics import roc_auc_score
 
     rows = validate_data(path, protocol)
     output.mkdir(parents=True, exist_ok=True)
@@ -420,7 +463,11 @@ def evaluate(
         raise ValueError("Evaluation destinations already exist.")
     frame = feature_frame(rows, protocol.numeric, protocol.categorical)
     features = protocol.numeric + protocol.categorical
-    target = (frame[protocol.target] == protocol.positive_label).astype(int)
+    target = (
+        (frame[protocol.target] == protocol.positive_label).astype(int)
+        if protocol.task == "binary"
+        else pd.to_numeric(frame[protocol.target], errors="raise")
+    )
     predictions: list[Prediction] = []
     results: list[Fold] = []
     parameters: dict[str, JsonValue] = {}
@@ -434,15 +481,24 @@ def evaluate(
             estimator = clone(factory(protocol.seed))
             parameters = {key: str(value)[:500] for key, value in estimator.get_params().items()}
             fit = fit_estimator(estimator, frame, target, split, protocol)
-            classes = list(estimator.classes_)
-            scores = estimator.predict_proba(frame.loc[split.score, features])[:, classes.index(1)]
+            scores = (
+                estimator.predict_proba(frame.loc[split.score, features])[
+                    :, list(estimator.classes_).index(1)
+                ]
+                if protocol.task == "binary"
+                else estimator.predict(frame.loc[split.score, features])
+            )
             if (
                 len(scores) != len(split.score)
                 or not np.isfinite(scores).all()
-                or ((scores < 0) | (scores > 1)).any()
+                or (protocol.task == "binary" and ((scores < 0) | (scores > 1)).any())
             ):
                 raise ValueError("Expected one finite positive-class probability per scoring row.")
-            value = float(roc_auc_score(target.loc[split.score], scores))
+            value = measure(
+                [float(value) for value in target.loc[split.score]],
+                [float(p) for p in scores],
+                protocol.metric,
+            )
             predictions.extend(
                 Prediction(
                     fold=split.id, row_id=key, truth=float(target.loc[key]), prediction=float(p)
@@ -480,7 +536,7 @@ def evaluate(
     if evaluation.complete:
         save(
             output / "metrics.json",
-            {"roc_auc_mean": sum(f.score or 0 for f in results) / len(results)},
+            {protocol.metric + "_mean": sum(f.score or 0 for f in results) / len(results)},
         )
         if refit:
             import joblib
@@ -514,6 +570,7 @@ def evaluate(
             save(
                 output / "model-recipe.json",
                 ModelRecipe(
+                    task=protocol.task,
                     protocol_id=protocol.fingerprint(),
                     features=features,
                     id_column=protocol.id_column,
@@ -545,6 +602,7 @@ def main() -> None:
     initialize.add_argument("--positive-label", default="1")
     initialize.add_argument("--folds", type=int, default=3)
     initialize.add_argument("--seed", type=int, default=17)
+    initialize.add_argument("--task", choices=["binary", "regression"], default="binary")
     execute = commands.add_parser("evaluate")
     execute.add_argument("--protocol", type=Path, default=Path("protocol.json"))
     execute.add_argument("--factory", default="model:make_estimator")
@@ -569,6 +627,7 @@ def main() -> None:
             positive_label=args.positive_label,
             folds=args.folds,
             seed=args.seed,
+            task=args.task,
         )
         with (args.output / "protocol.json").open("x", encoding="utf-8") as stream:
             stream.write(protocol.model_dump_json(indent=2) + "\n")
