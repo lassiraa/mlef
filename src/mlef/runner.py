@@ -440,12 +440,13 @@ def run(
                 stage("execution")
                 # Do not allocate a TTY: Docker then preserves separate stdout/stderr streams.
                 # Handle Ctrl+C in mlef; do not also deliver it to the attached Docker client.
+                # Supervised clients inherit the worker's group so deadline cleanup reaps them.
                 process = subprocess.Popen(
                     ["docker", "start", "--attach", name],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
-                    start_new_session=sys.platform != "win32",
+                    start_new_session=sys.platform != "win32" and _identifier is None,
                 )
                 metadata.state, metadata.started_at = "running", now()
                 save(run_dir / "run.json", metadata)

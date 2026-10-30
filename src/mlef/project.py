@@ -6,13 +6,16 @@ from pathlib import Path
 
 def project_root(root: Path | str | None = None) -> Path:
     candidate = Path.cwd() if root is None else Path(root).resolve()
-    result = subprocess.run(
-        ["git", "-C", str(candidate), "rev-parse", "--show-toplevel"],
-        capture_output=True,
-        text=True,
-        check=False,
-        timeout=10,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(candidate), "rev-parse", "--show-toplevel"],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=10,
+        )
+    except subprocess.SubprocessError as error:
+        raise ValueError("Cannot resolve the Git project root within ten seconds.") from error
     if result.returncode:
         raise ValueError("Use a Git project root (initialize Git first).")
     resolved = Path(result.stdout.strip()).resolve()

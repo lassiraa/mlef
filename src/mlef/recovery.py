@@ -1,5 +1,6 @@
 """Explicit recovery of abandoned owned runs; ordinary inspection remains read-only."""
 
+import subprocess
 from pathlib import Path
 
 from .environment import query
@@ -31,7 +32,7 @@ def recover(root: Path, identifier: str) -> RunRecord:
         with BoundedLog(str(run_dir / "recovery.log"), 65536) as log:
             try:
                 query(["info", "--format", "{{.ServerVersion}}"], log)
-            except (OSError, RuntimeError) as error:
+            except (OSError, RuntimeError, subprocess.SubprocessError) as error:
                 raise QueryError(
                     "engine_unavailable", "Docker is unavailable; recorded liveness is unchanged."
                 ) from error

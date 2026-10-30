@@ -9,6 +9,7 @@ from uuid import uuid4
 import pytest
 
 from mlef import api, supervision
+from mlef.cli import main
 from mlef.evidence import normalize
 from mlef.records import Dataset, Evaluation, Experiment, RunRecord
 from mlef.runner import save
@@ -96,6 +97,19 @@ def test_api_rejects_nested_root(project: Path) -> None:
         api.init(root=nested)
     assert failure.value.category == "configuration"
     assert not (nested / ".mlef").exists()
+
+
+def test_stalled_project_lookup_is_a_configuration_error(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def stalled(*args: object, **kwargs: object) -> None:
+        raise subprocess.TimeoutExpired(["git", "rev-parse"], 10)
+
+    monkeypatch.setattr("mlef.project.subprocess.run", stalled)
+    with pytest.raises(api.MlefError) as failure:
+        api.init()
+    assert failure.value.category == "configuration"
+    assert main(["init"]) == 2
 
 
 def test_failed_callback_stops_worker_and_preserves_record(
