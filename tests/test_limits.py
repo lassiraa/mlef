@@ -1,8 +1,11 @@
+import json
 import os
+import subprocess
 from pathlib import Path
 
 import pytest
 
+from mlef import runner
 from mlef.cli import init, main
 from mlef.limits import Limits, memory_bytes
 from mlef.records import read_run
@@ -33,6 +36,37 @@ def test_requests_fail_when_not_enforced() -> None:
         limits.capabilities({})
     with pytest.raises(RuntimeError, match="CPU limit"):
         limits.applied({"NanoCpus": 0})
+
+
+@pytest.mark.parametrize("confirmed", [False, True])
+def test_exit137_waits_for_affirmative_oom_evidence(
+    monkeypatch: pytest.MonkeyPatch, confirmed: bool
+) -> None:
+    calls = 0
+
+    def inspect(*args: object, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        nonlocal calls
+        calls += 1
+        return subprocess.CompletedProcess(
+            [],
+            0,
+            json.dumps(
+                {
+                    "Running": False,
+                    "StartedAt": "2026-01-01T00:00:00Z",
+                    "FinishedAt": "2026-01-01T00:00:01Z",
+                    "ExitCode": 137,
+                    "OOMKilled": confirmed and calls > 1,
+                }
+            ),
+        )
+
+    ticks = iter([0.0, 0.1, 3.0])
+    monkeypatch.setattr(runner.subprocess, "run", inspect)
+    monkeypatch.setattr(runner.time, "monotonic", lambda: next(ticks))
+    monkeypatch.setattr(runner.time, "sleep", lambda seconds: None)
+    assert runner.completed_state("owned").oom_killed == confirmed
+    assert calls == 2
 
 
 @pytest.mark.skipif(os.environ.get("MLEF_TEST_DOCKER") != "1", reason="Set MLEF_TEST_DOCKER=1")

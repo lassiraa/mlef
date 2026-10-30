@@ -8,6 +8,7 @@ import sys
 import tarfile
 import tempfile
 import threading
+import time
 from contextlib import suppress
 from datetime import UTC, datetime
 from io import BufferedReader
@@ -15,7 +16,7 @@ from pathlib import Path
 from typing import BinaryIO, TextIO
 from uuid import uuid4
 
-from pydantic import BaseModel, JsonValue, TypeAdapter
+from pydantic import BaseModel, Field, JsonValue, TypeAdapter
 
 from .collection import output_destination
 from .environment import (
@@ -37,6 +38,32 @@ from .provenance import capture, extract_source
 from .records import Controls, RunError, RunRecord
 
 BASE_IMAGE = "python:3.12-slim"
+
+
+class CompletedState(BaseModel):
+    running: bool = Field(alias="Running")
+    started_at: str = Field(alias="StartedAt")
+    finished_at: str = Field(alias="FinishedAt")
+    exit_code: int = Field(alias="ExitCode")
+    oom_killed: bool = Field(default=False, alias="OOMKilled")
+    error: str = Field(default="", alias="Error")
+
+
+def completed_state(name: str) -> CompletedState:
+    """Docker's OOM event can arrive just after attach closes; require affirmative evidence."""
+    deadline = time.monotonic() + 2
+    while True:
+        inspection = subprocess.run(
+            ["docker", "inspect", "--format", "{{json .State}}", name],
+            capture_output=True,
+            text=True,
+            check=True,
+            timeout=5,
+        )
+        state = CompletedState.model_validate_json(inspection.stdout)
+        if state.exit_code != 137 or state.oom_killed or time.monotonic() >= deadline:
+            return state
+        time.sleep(0.05)
 
 
 def now() -> str:
@@ -456,34 +483,28 @@ def run(
                     attach_exit_code = stream_process(
                         process, run_dir, name, log, budget=script_budget
                     )
-                inspection = subprocess.run(
-                    ["docker", "inspect", "--format", "{{json .State}}", name],
-                    capture_output=True,
-                    text=True,
-                    check=True,
-                )
-                state = json.loads(inspection.stdout)
-                if state["Running"] or not state.get("StartedAt", "").startswith("20"):
+                state = completed_state(name)
+                if state.running or not state.started_at.startswith("20"):
                     raise RuntimeError("Docker did not report a completed script execution.")
-                if state.get("Error"):
-                    raise RuntimeError(f"Container execution failed: {state['Error']}")
-                metadata.execution_exit_code = state["ExitCode"]
+                if state.error:
+                    raise RuntimeError(f"Container execution failed: {state.error}")
+                metadata.execution_exit_code = state.exit_code
                 assert metadata.controls is not None
-                metadata.controls.applied["oom_killed"] = bool(state.get("OOMKilled"))
+                metadata.controls.applied["oom_killed"] = state.oom_killed
                 metadata.execution_seconds = max(
                     0,
                     (
-                        datetime.fromisoformat(state["FinishedAt"])
-                        - datetime.fromisoformat(state["StartedAt"])
+                        datetime.fromisoformat(state.finished_at)
+                        - datetime.fromisoformat(state.started_at)
                     ).total_seconds(),
                 )
-                if state["ExitCode"]:
-                    if state.get("OOMKilled"):
+                if state.exit_code:
+                    if state.oom_killed:
                         metadata.error = RunError(
                             category="oom", message="Docker confirmed an OOM kill."
                         )
                     raise RuntimeError(
-                        f"Script exited with code {state['ExitCode']}; see stderr.log."
+                        f"Script exited with code {state.exit_code}; see stderr.log."
                     )
                 if attach_exit_code:
                     raise RuntimeError("Docker attach failed; experiment logs may be incomplete.")

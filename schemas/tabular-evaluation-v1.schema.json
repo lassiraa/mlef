@@ -1,0 +1,273 @@
+{
+  "$defs": {
+    "Fold": {
+      "additionalProperties": false,
+      "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "score": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Score"
+        },
+        "score_count": {
+          "exclusiveMinimum": 0,
+          "title": "Score Count",
+          "type": "integer"
+        },
+        "seconds": {
+          "minimum": 0,
+          "title": "Seconds",
+          "type": "number"
+        },
+        "state": {
+          "enum": [
+            "succeeded",
+            "failed"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "train_count": {
+          "exclusiveMinimum": 0,
+          "title": "Train Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "seconds",
+        "train_count",
+        "score_count"
+      ],
+      "title": "Fold",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "Protocol": {
+      "additionalProperties": false,
+      "properties": {
+        "categorical": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Categorical",
+          "type": "array"
+        },
+        "dataset_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Dataset Sha256",
+          "type": "string"
+        },
+        "direction": {
+          "const": "maximize",
+          "default": "maximize",
+          "title": "Direction",
+          "type": "string"
+        },
+        "group_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group Column"
+        },
+        "id_column": {
+          "title": "Id Column",
+          "type": "string"
+        },
+        "kind": {
+          "default": "stratified",
+          "enum": [
+            "stratified",
+            "group",
+            "time"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "metric": {
+          "const": "roc_auc",
+          "default": "roc_auc",
+          "title": "Metric",
+          "type": "string"
+        },
+        "numeric": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Numeric",
+          "type": "array"
+        },
+        "positive_label": {
+          "default": "1",
+          "title": "Positive Label",
+          "type": "string"
+        },
+        "rows": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Rows",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "seed": {
+          "default": 17,
+          "title": "Seed",
+          "type": "integer"
+        },
+        "splits": {
+          "items": {
+            "$ref": "#/$defs/Split"
+          },
+          "maxItems": 100,
+          "minItems": 2,
+          "title": "Splits",
+          "type": "array"
+        },
+        "target": {
+          "title": "Target",
+          "type": "string"
+        },
+        "task": {
+          "const": "binary",
+          "default": "binary",
+          "title": "Task",
+          "type": "string"
+        },
+        "time_column": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Time Column"
+        }
+      },
+      "required": [
+        "dataset_sha256",
+        "id_column",
+        "target",
+        "numeric",
+        "rows",
+        "splits"
+      ],
+      "title": "Protocol",
+      "type": "object"
+    },
+    "Split": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "score": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Score",
+          "type": "array"
+        },
+        "train": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Train",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "train",
+        "score"
+      ],
+      "title": "Split",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "complete": {
+      "title": "Complete",
+      "type": "boolean"
+    },
+    "folds": {
+      "items": {
+        "$ref": "#/$defs/Fold"
+      },
+      "title": "Folds",
+      "type": "array"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Parameters",
+      "type": "object"
+    },
+    "predictions_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Predictions Sha256",
+      "type": "string"
+    },
+    "protocol": {
+      "$ref": "#/$defs/Protocol"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "protocol",
+    "complete",
+    "folds",
+    "predictions_sha256"
+  ],
+  "title": "Evaluation",
+  "type": "object"
+}
