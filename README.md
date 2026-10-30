@@ -273,6 +273,24 @@ evidence file is limited to 32 MiB for offline inspection. Generic `compare`
 retains its original declaration-based behavior. These are consistency checks of
 saved evidence, not independent execution attestation or statistical significance.
 
+The sklearn demo also evaluates CPU-only XGBoost candidates, including a missing-
+value-indicator/preprocessing hypothesis. XGBoost's early-stopping validation rows
+come exclusively from each outer training partition; grouped/time protocols retain
+those constraints for the inner partition. Preprocessing is fitted on inner training
+rows and explicitly transforms the validation set. Evaluation v2 records the actual
+inner assignments and best iteration; v1 evidence remains readable offline.
+
+After comparing all candidates, the demo refits the best validation candidate on
+the complete exploration dataset. Boosted models use the median CV best tree count
+with early stopping disabled for this refit. `model.joblib` and `model-recipe.json`
+preserve preprocessing, feature order, label semantics, parameters and versions.
+`evaluate.py predict` explicitly loads a trusted model and writes positive-class
+probabilities; offline inspection never deserializes models. The demo retrieves
+the selected model and runs this prediction step through Docker too. No final-test
+labels participate; validation selection alone is not evidence of generalization.
+XGBoost host tests run on Linux/Windows; the base macOS CLI/package matrix remains
+independent of XGBoost, and macOS container execution remains preview.
+
 Development:
 
 ```text

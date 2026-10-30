@@ -30,6 +30,7 @@ dev = [
     "ruff>=0.17.1",
     "scikit-learn>=1.9.1",
     "ty>=0.0.89",
+    "xgboost-cpu>=3,<3.4 ; sys_platform == 'linux' or sys_platform == 'win32'",
 ]
 
 [tool.setuptools.packages.find]

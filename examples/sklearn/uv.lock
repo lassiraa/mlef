@@ -6,10 +6,10 @@ resolution-markers = [
     "python_full_version >= '3.14' and sys_platform == 'emscripten'",
     "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32'",
-    "python_full_version < '3.12' and sys_platform == 'win32'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
-    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
     "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
 ]
 
@@ -51,6 +51,8 @@ dependencies = [
     { name = "pandas" },
     { name = "pydantic" },
     { name = "scikit-learn" },
+    { name = "xgboost-cpu", version = "3.2.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.12'" },
+    { name = "xgboost-cpu", version = "3.3.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.12'" },
 ]
 
 [package.metadata]
@@ -58,6 +60,7 @@ requires-dist = [
     { name = "pandas", specifier = ">=3,<4" },
     { name = "pydantic", specifier = ">=2,<3" },
     { name = "scikit-learn", specifier = ">=1.9,<2" },
+    { name = "xgboost-cpu", specifier = ">=3,<3.4" },
 ]
 
 [[package]]
@@ -730,4 +733,49 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/7a/29/6a1391d31cd00ff9e927215a224a880e1e84e826b64ba80a499e51c074d8/tzdata-2026.6.tar.gz", hash = "sha256:85d2cd9c09f81f0bb29db27759fc83af4f1e620efb814f8c5bf8b4cc4feece6d", size = 201017, upload-time = "2026-10-28T09:57:09.137Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0a/66/9a06c2227fedfd4919f0eaaa8b94377d9730882a7e4f95823c9a331ab5e1/tzdata-2026.6-py2.py3-none-any.whl", hash = "sha256:0a10eec6e13ef16b627fabed9a5f2ba61a62b1c67f327305f4e7e412a70b4aec", size = 348210, upload-time = "2026-10-28T09:57:07.276Z" },
+]
+
+[[package]]
+name = "xgboost-cpu"
+version = "3.2.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.12' and sys_platform == 'win32'",
+    "python_full_version < '3.12' and sys_platform == 'emscripten'",
+    "python_full_version < '3.12' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "numpy", version = "2.4.6", source = { registry = "https://pypi.org/simple" } },
+    { name = "scipy", version = "1.17.1", source = { registry = "https://pypi.org/simple" } },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/1c/43/89437af879315468860b0ef566647113102be898f28fc094b667166d6fe3/xgboost_cpu-3.2.0.tar.gz", hash = "sha256:27f1b1642815c23ee73065d5702ad24c1c1649d63e4e2f498dc7e6a961012281", size = 1264279, upload-time = "2026-02-10T10:34:51.922Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/16/3d/b996f80a52e6a4f7c5ed1851bfc1f4e8dae2dc7670ef8b0ca283b3006e3b/xgboost_cpu-3.2.0-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:896b9e2bc52ec0921edf92ddd1cebedf47032e94992b7aca0293524d380ce6e9", size = 5213428, upload-time = "2026-02-10T10:32:30.609Z" },
+    { url = "https://files.pythonhosted.org/packages/ba/1d/c05e982a2220e1a208f5ca8792265cefb43e860e8796bff3245cc94fc2ce/xgboost_cpu-3.2.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:9c10b1653e1a689bf4094a328144cf3633c9be0e5217a76fbdc2fde6abcb2950", size = 5595924, upload-time = "2026-02-10T10:33:04.692Z" },
+    { url = "https://files.pythonhosted.org/packages/cc/b6/3981ecd0f11992203254bb5a94002a6b07ada12d0e660f01f6e742d15795/xgboost_cpu-3.2.0-py3-none-win_amd64.whl", hash = "sha256:bfe72e42f73d2c6870a1a8b75324d56ae86ddad9abd4dccefeb36f2c3196dd48", size = 2149094, upload-time = "2026-02-10T10:34:25.086Z" },
+    { url = "https://files.pythonhosted.org/packages/1b/0a/595eff7c5603f6ba49b7ce1501bafed8ce3039ed2dcaadd61748d1be9ecd/xgboost_cpu-3.2.0-py3-none-win_arm64.whl", hash = "sha256:78fc90c09d7a1a1603ebb3a1c341689096797160c35a996d6a096b03e20caab4", size = 2087619, upload-time = "2026-02-10T10:33:32.664Z" },
+]
+
+[[package]]
+name = "xgboost-cpu"
+version = "3.3.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'win32'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform == 'emscripten'",
+    "python_full_version >= '3.12' and python_full_version < '3.14' and sys_platform != 'emscripten' and sys_platform != 'win32'",
+]
+dependencies = [
+    { name = "numpy", version = "2.5.4", source = { registry = "https://pypi.org/simple" } },
+    { name = "scipy", version = "1.18.1", source = { registry = "https://pypi.org/simple" } },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/a7/e2/8acfd6c51c64494284200320def6dec8a92c97c1a306e7033ea6ef16f530/xgboost_cpu-3.3.0.tar.gz", hash = "sha256:9bf15e819f57ab8b83c9c34510b13711f79faf0cef1a92a5fbe5cef9178f72a6", size = 1225043, upload-time = "2026-06-17T21:10:24.981Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d6/a9/8dad8a156c837e6f0ed3c2e87f0f61cd08d09983aabca8b19c54c479c860/xgboost_cpu-3.3.0-py3-none-manylinux_2_28_aarch64.whl", hash = "sha256:66119333b84d881953b3ebfa40a73aae1ac41ecd70e1d9f4f84b2e4ce52fa83d", size = 5324011, upload-time = "2026-06-17T21:13:08.034Z" },
+    { url = "https://files.pythonhosted.org/packages/08/e7/54aba933bada361bb3da966dec9e3a065b5878f36be77c742774cba77511/xgboost_cpu-3.3.0-py3-none-manylinux_2_28_x86_64.whl", hash = "sha256:04faff7816f887e89ab1e28161c2644f8830f631fa257d509054063c421a40c1", size = 5707013, upload-time = "2026-06-17T21:13:33.969Z" },
+    { url = "https://files.pythonhosted.org/packages/f3/a0/a4e7aa41f1e61ba136ad0864d5c3907d446e728395d383982724f45482ff/xgboost_cpu-3.3.0-py3-none-win_amd64.whl", hash = "sha256:fcda9bb61c3104821bf4ce89673d99f97ca96e00034a377dce9bc202ea46fcce", size = 2200747, upload-time = "2026-06-17T21:11:41.895Z" },
+    { url = "https://files.pythonhosted.org/packages/88/c5/bdfc4631c996fbcb9a8323146ea37e7ceee74474a4c256553ba14ab21679/xgboost_cpu-3.3.0-py3-none-win_arm64.whl", hash = "sha256:8ce241ef4a31366d7325e8a0f43e8885d96d37de580233a1aa9d12cc2ce8f9f7", size = 2142319, upload-time = "2026-06-17T21:10:53.006Z" },
 ]

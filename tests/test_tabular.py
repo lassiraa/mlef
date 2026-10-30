@@ -1,4 +1,5 @@
 import csv
+import importlib.util
 import json
 import os
 import subprocess
@@ -19,7 +20,7 @@ from mlef.records import RunRecord
 from mlef.runner import save
 from mlef.storage import QueryError
 from mlef.tabular_comparison import compare_tabular
-from mlef.tabular_runtime import digest, evaluate, prepare, read_object, validate_data
+from mlef.tabular_runtime import digest, evaluate, predict, prepare, read_object, validate_data
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples/sklearn"
 
@@ -199,6 +200,24 @@ def test_real_sklearn_workflow_and_failure(project: Path) -> None:
     )
     assert result.state == "succeeded", result.model_dump_json()
     assert result.result.metrics["roc_auc_mean"] > 0.85
+    selected = api.run(
+        "evaluate.py",
+        includes=["data.csv", "model.py", "protocol.json"],
+        arguments=["evaluate", "--factory", "model:make_xgboost", "--refit"],
+        options=options,
+    )
+    assert selected.state == "succeeded", selected.model_dump_json()
+    assert api.compare_tabular(result.id, selected.id).compatibility == "matched"
+    for artifact in ["model.joblib", "model-recipe.json"]:
+        api.get(selected.id, artifact, output=artifact)
+    inferred = api.run(
+        "evaluate.py",
+        includes=["data.csv", "model.joblib", "model-recipe.json"],
+        arguments=["predict"],
+        options=options,
+    )
+    assert inferred.state == "succeeded", inferred.model_dump_json()
+    assert "inference.csv" in api.artifacts(inferred.id)
     (project / "failure.py").write_text(
         "def make_estimator(seed):\n raise RuntimeError('fold failure')\n"
     )
@@ -277,3 +296,67 @@ def test_tabular_comparison_refuses_unreliable_winners(
         result = compare_tabular(project, first, second)
         assert result.observation == "unavailable"
         assert result.compatibility == ("incompatible" if damage == "protocol" else "unknown")
+
+
+def example_factory(name: str) -> Callable[[int], BaseEstimator]:
+    spec = importlib.util.spec_from_file_location("example_model", EXAMPLE / "model.py")
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+
+    def factory(seed: int) -> BaseEstimator:
+        estimator = getattr(module, name)(seed)
+        assert isinstance(estimator, BaseEstimator)
+        return estimator
+
+    return factory
+
+
+def test_xgboost_inner_splits_and_refit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    pytest.importorskip("xgboost")
+    import joblib
+    import numpy as np
+
+    from mlef.tabular_runtime import feature_frame, read_rows
+
+    fitted: list[set[str]] = []
+    original_fit = SimpleImputer.fit
+
+    def observed_fit(self: SimpleImputer, features, y=None) -> SimpleImputer:  # noqa: ANN001 - sklearn callback
+        fitted.append(set(features.index))
+        original_fit(self, features, y)
+        return self
+
+    monkeypatch.setattr(SimpleImputer, "fit", observed_fit)
+
+    data = EXAMPLE / "data.csv"
+    protocol = prepare(
+        data,
+        identifier="id",
+        target="target",
+        numeric=["radius", "texture", "smoothness"],
+        categorical=["radius_band"],
+    )
+    output = tmp_path / "evaluation"
+    result = evaluate(data, protocol, example_factory("make_xgboost"), output, refit=True)
+    assert result.complete
+    assert result.model_artifact == "model.joblib"
+    for split, fold in zip(protocol.splits, result.folds, strict=True):
+        assert fold.fit is not None
+        assert fold.fit.best_iteration is not None
+        assert set(fold.fit.train) | set(fold.fit.validation) == set(split.train)
+        assert not (set(fold.fit.train) | set(fold.fit.validation)) & set(split.score)
+    for index, fold in enumerate(result.folds):
+        assert fold.fit is not None
+        assert fitted[index * 2 : index * 2 + 2] == [set(fold.fit.train), set(fold.fit.train)]
+    frame = feature_frame(read_rows(data, "id"), protocol.numeric, protocol.categorical)
+    loaded = joblib.load(output / "model.joblib")
+    expected = loaded.predict_proba(frame[protocol.numeric + protocol.categorical])[:, 1]
+    predict(data, output / "model.joblib", output / "model-recipe.json", tmp_path / "predicted.csv")
+    with (tmp_path / "predicted.csv").open() as stream:
+        actual = [float(row["positive_probability"]) for row in csv.DictReader(stream)]
+    np.testing.assert_allclose(actual, expected)
+    versions = read_object(output / "model-recipe.json")["versions"]
+    assert isinstance(versions, dict)
+    assert "xgboost-cpu" in versions

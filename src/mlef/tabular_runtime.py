@@ -6,12 +6,15 @@ import argparse
 import csv
 import hashlib
 import importlib
+import importlib.metadata
 import json
 import math
 import os
+import statistics
 import time
 from collections import Counter
 from collections.abc import Callable
+from contextlib import suppress
 from datetime import datetime
 from itertools import groupby
 from pathlib import Path
@@ -28,6 +31,7 @@ from pydantic import (
 )
 
 if TYPE_CHECKING:
+    from pandas import DataFrame, Series
     from sklearn.base import BaseEstimator
 
 
@@ -112,6 +116,12 @@ class Protocol(Contract):
         ).hexdigest()
 
 
+class Fit(Contract):
+    train: list[str]
+    validation: list[str] = Field(default_factory=list)
+    best_iteration: int | None = None
+
+
 class Fold(Contract):
     id: str
     state: Literal["succeeded", "failed"]
@@ -120,6 +130,7 @@ class Fold(Contract):
     train_count: int = Field(gt=0)
     score_count: int = Field(gt=0)
     error: str | None = None
+    fit: Fit | None = None
 
 
 class Prediction(Contract):
@@ -130,12 +141,121 @@ class Prediction(Contract):
 
 
 class Evaluation(Contract):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     protocol: Protocol
     complete: bool
     folds: list[Fold]
     predictions_sha256: str = Field(pattern="^[a-f0-9]{64}$")
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    model_artifact: str | None = None
+
+
+def parse_evaluation(values: JsonValue) -> Evaluation:
+    if (
+        isinstance(values, dict)
+        and type(values.get("schema_version")) is int
+        and values.get("schema_version") == 1
+    ):
+        values = {**values, "schema_version": 2}
+    return Evaluation.model_validate(values)
+
+
+class ModelRecipe(Contract):
+    schema_version: Literal[1] = 1
+    protocol_id: str
+    features: list[str]
+    id_column: str
+    numeric: list[str]
+    categorical: list[str]
+    positive_label: str
+    fit_policy: str
+    versions: dict[str, str]
+    parameters: dict[str, JsonValue]
+
+
+def feature_frame(
+    rows: dict[str, dict[str, str]], numeric: list[str], categorical: list[str]
+) -> DataFrame:
+    import numpy as np
+    import pandas as pd
+
+    frame = pd.DataFrame.from_dict(rows, orient="index")
+    for column in numeric:
+        frame[column] = pd.to_numeric(frame[column].replace("", float("nan")), errors="raise")
+    for column in categorical:
+        frame[column] = frame[column].replace("", np.nan)
+    return frame
+
+
+def predict(data: Path, model: Path, recipe_path: Path, output: Path) -> None:
+    """Explicitly load a trusted model; never invoked by offline inspection."""
+    import joblib
+
+    recipe = ModelRecipe.model_validate(read_object(recipe_path))
+    frame = feature_frame(read_rows(data, recipe.id_column), recipe.numeric, recipe.categorical)
+    estimator = joblib.load(model)
+    scores = estimator.predict_proba(frame[recipe.features])[:, list(estimator.classes_).index(1)]
+    with output.open("x", encoding="utf-8", newline="") as stream:
+        writer = csv.writer(stream)
+        writer.writerow([recipe.id_column, "positive_probability"])
+        writer.writerows(zip(frame.index, scores, strict=True))
+
+
+def fit_estimator(
+    estimator: BaseEstimator,
+    frame: DataFrame,
+    target: Series,
+    split: Split,
+    protocol: Protocol,
+) -> Fit:
+    from sklearn.base import clone
+    from sklearn.model_selection import GroupShuffleSplit, train_test_split
+    from sklearn.pipeline import Pipeline
+
+    features = protocol.numeric + protocol.categorical
+    model = estimator[-1] if isinstance(estimator, Pipeline) else estimator
+    if model.get_params().get("early_stopping_rounds") is None:
+        fit_function = getattr(estimator, "fit")  # noqa: B009 - BaseEstimator does not declare fit
+        fit_function(frame.loc[split.train, features], target.loc[split.train])
+        return Fit(train=split.train)
+    if not type(model).__module__.startswith("xgboost"):
+        raise ValueError("Explicit early stopping is supported for XGBoost estimators only.")
+    if protocol.kind == "time":
+        column = protocol.time_column
+        assert column is not None
+        ordered = sorted(
+            split.train, key=lambda key: datetime.fromisoformat(str(frame.loc[key, column]))
+        )
+        cut = max(1, int(len(ordered) * 0.8))
+        train, validation = ordered[:cut], ordered[cut:]
+    elif protocol.kind == "group":
+        splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=protocol.seed)
+        train_indices, val_indices = next(
+            splitter.split(split.train, groups=frame.loc[split.train, protocol.group_column])
+        )
+        train = [split.train[index] for index in train_indices]
+        validation = [split.train[index] for index in val_indices]
+    else:
+        train, validation = train_test_split(
+            split.train, test_size=0.2, random_state=protocol.seed, stratify=target.loc[split.train]
+        )
+    if any(set(target.loc[partition]) != {0, 1} for partition in [train, validation]):
+        raise ValueError("Early-stopping partitions must contain both classes.")
+    x_train, x_validation = frame.loc[train, features], frame.loc[validation, features]
+    if isinstance(estimator, Pipeline):
+        preprocess = clone(estimator[:-1])
+        x_train = preprocess.fit_transform(x_train, target.loc[train])
+        x_validation = preprocess.transform(x_validation)
+        estimator.steps = [*preprocess.steps, estimator.steps[-1]]
+    model_fit = getattr(model, "fit")  # noqa: B009 - optional estimator API
+    model_fit(
+        x_train, target.loc[train], eval_set=[(x_validation, target.loc[validation])], verbose=False
+    )
+    return Fit(
+        train=train,
+        validation=validation,
+        best_iteration=int(getattr(model, "best_iteration")),  # noqa: B009 - optional XGBoost API
+    )
 
 
 def digest(path: Path) -> str:
@@ -285,9 +405,10 @@ def evaluate(
     protocol: Protocol,
     factory: Callable[[int], BaseEstimator],
     output: Path,
+    *,
+    refit: bool = False,
 ) -> Evaluation:
     import numpy as np
-    import pandas as pd
     from sklearn.base import clone
     from sklearn.metrics import roc_auc_score
 
@@ -297,12 +418,8 @@ def evaluate(
         (output / name).exists() for name in ["evaluation.json", "predictions.csv", "metrics.json"]
     ):
         raise ValueError("Evaluation destinations already exist.")
-    frame = pd.DataFrame.from_dict(rows, orient="index")
+    frame = feature_frame(rows, protocol.numeric, protocol.categorical)
     features = protocol.numeric + protocol.categorical
-    for column in protocol.numeric:
-        frame[column] = pd.to_numeric(frame[column].replace("", float("nan")), errors="raise")
-    for column in protocol.categorical:
-        frame[column] = frame[column].replace("", np.nan)
     target = (frame[protocol.target] == protocol.positive_label).astype(int)
     predictions: list[Prediction] = []
     results: list[Fold] = []
@@ -312,10 +429,11 @@ def evaluate(
         began = time.monotonic()
         value: float | None = None
         error: str | None = None
+        fit: Fit | None = None
         try:
             estimator = clone(factory(protocol.seed))
             parameters = {key: str(value)[:500] for key, value in estimator.get_params().items()}
-            estimator.fit(frame.loc[split.train, features], target.loc[split.train])
+            fit = fit_estimator(estimator, frame, target, split, protocol)
             classes = list(estimator.classes_)
             scores = estimator.predict_proba(frame.loc[split.score, features])[:, classes.index(1)]
             if (
@@ -342,6 +460,7 @@ def evaluate(
                 train_count=len(split.train),
                 score_count=len(split.score),
                 error=error,
+                fit=fit,
             )
         )
         with (output / "predictions.csv").open("w", encoding="utf-8", newline="") as stream:
@@ -363,6 +482,53 @@ def evaluate(
             output / "metrics.json",
             {"roc_auc_mean": sum(f.score or 0 for f in results) / len(results)},
         )
+        if refit:
+            import joblib
+
+            selected = clone(factory(protocol.seed))
+            from sklearn.pipeline import Pipeline
+
+            model = selected[-1] if isinstance(selected, Pipeline) else selected
+            iterations = [
+                fold.fit.best_iteration + 1
+                for fold in results
+                if fold.fit is not None and fold.fit.best_iteration is not None
+            ]
+            if iterations:
+                model.set_params(
+                    n_estimators=int(statistics.median(iterations)),
+                    early_stopping_rounds=None,
+                    callbacks=None,
+                )
+            selected.fit(frame[features], target)
+            joblib.dump(selected, output / "model.joblib")
+            evaluation.model_artifact = "model.joblib"
+            save(output / "evaluation.json", evaluation)
+            versions = {
+                name: importlib.metadata.version(name)
+                for name in ["scikit-learn", "pandas", "numpy"]
+            }
+            for package in ["xgboost-cpu", "xgboost"]:
+                with suppress(importlib.metadata.PackageNotFoundError):
+                    versions[package] = importlib.metadata.version(package)
+            save(
+                output / "model-recipe.json",
+                ModelRecipe(
+                    protocol_id=protocol.fingerprint(),
+                    features=features,
+                    id_column=protocol.id_column,
+                    numeric=protocol.numeric,
+                    categorical=protocol.categorical,
+                    positive_label=protocol.positive_label,
+                    fit_policy="full exploration data; fixed median CV tree count"
+                    if iterations
+                    else "full exploration data",
+                    versions=versions,
+                    parameters={
+                        key: str(value)[:500] for key, value in selected.get_params().items()
+                    },
+                ),
+            )
     return evaluation
 
 
@@ -382,7 +548,11 @@ def main() -> None:
     execute = commands.add_parser("evaluate")
     execute.add_argument("--protocol", type=Path, default=Path("protocol.json"))
     execute.add_argument("--factory", default="model:make_estimator")
-    for command in [initialize, execute]:
+    execute.add_argument("--refit", action="store_true")
+    inference = commands.add_parser("predict", help="Load only trusted model artifacts.")
+    inference.add_argument("--model", type=Path, default=Path("model.joblib"))
+    inference.add_argument("--recipe", type=Path, default=Path("model-recipe.json"))
+    for command in [initialize, execute, inference]:
         command.add_argument("--data", type=Path, default=Path("data.csv"))
         command.add_argument(
             "--output", type=Path, default=Path(os.environ.get("MLEF_OUTPUT_DIR", "."))
@@ -402,11 +572,13 @@ def main() -> None:
         )
         with (args.output / "protocol.json").open("x", encoding="utf-8") as stream:
             stream.write(protocol.model_dump_json(indent=2) + "\n")
+    elif args.command == "predict":
+        predict(args.data, args.model, args.recipe, args.output / "inference.csv")
     else:
         module, name = args.factory.split(":", 1)
         factory = getattr(importlib.import_module(module), name)
         protocol = Protocol.model_validate(read_object(args.protocol))
-        result = evaluate(args.data, protocol, factory, args.output)
+        result = evaluate(args.data, protocol, factory, args.output, refit=args.refit)
         raise SystemExit(0 if result.complete else 1)
 
 
