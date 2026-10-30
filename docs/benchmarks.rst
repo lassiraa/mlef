@@ -1,18 +1,18 @@
 Evaluating agent workflows
 ==========================
 
-`Documentation home <../README.md>`_
+:doc:`Documentation home <index>`
 
-This is an advanced coordinator guide. Start with the `tabular workflow <tabular.rst>`_
+This is an advanced coordinator guide. Start with the :doc:`tabular workflow <tabular>`
 for model development. Commands below run from the MLEF checkout unless stated
-otherwise; first install development dependencies as in `development <development.rst>`_.
+otherwise; first install development dependencies as in :doc:`development <development>`.
 
 The matched tabular benchmark starts with
 ``uv run --locked --extra dev python benchmarks/fixture.py prepare-tabular TRIAL --task classification-mixed``
 (also ``classification-missing``, ``regression-mixed``, ``regression-missing``). It writes
 common code, a pinned environment, saved exploration folds and unlabeled submission
 features into ``TRIAL/agent``; final labels stay in ``TRIAL/private``. The classification
-variants use the Wisconsin data attributed in the `tabular guide <tabular.rst>`_; regression variants use the
+variants use the Wisconsin data attributed in the :doc:`tabular guide <tabular>`; regression variants use the
 reproducible synthetic fixture. ``task.json`` records source/license/modifications
 and dataset/protocol fingerprints. These variants are harness fixtures, not four
 independent real-world datasets or evidence of agent uplift.
@@ -40,7 +40,7 @@ before submitting. An interrupted freeze fails closed and retains its private
 files for coordinator inspection rather than overwriting them on a retry.
 
 Record a version-2 trial using ``fixture.py record INPUT.json OUTPUT.json --score-ledger LEDGER``.
-The schema is `tabular trial v2 <../schemas/tabular-trial-v2.schema.json>`_. Completed
+The schema is `tabular trial v2 <https://github.com/lassiraa/mlef/blob/main/schemas/tabular-trial-v2.schema.json>`_. Completed
 trials require a matching frozen-score ledger and stay within their declared
 budget. Failed/cancelled trials retain reasons, missing held-out scores and actual
 elapsed time, including overruns. Record agent/model/settings, seed, repetition,

@@ -1,5 +1,5 @@
 include README.md LICENSE uv.lock
-recursive-include docs *.rst
+recursive-include docs *.rst *.py
 recursive-include examples *.py *.toml *.lock *.json *.csv
 recursive-include schemas *.json
 recursive-include benchmarks *.py

@@ -1,10 +1,10 @@
 Tabular workflows and agent feedback
 ====================================
 
-`Documentation home <../README.md>`_
+:doc:`Documentation home <index>`
 
 The complete example compares ordinary sklearn Pipelines and CPU XGBoost,
-then retrieves a selected model and runs inference. See `setup <setup.rst>`_
+then retrieves a selected model and runs inference. See :doc:`setup <setup>`
 for the copy-and-run commands (use a fresh directory for each demo).
 
 A model is an ordinary Python factory
@@ -27,7 +27,7 @@ the numeric-only case can use this ``model.py``:
 
 Declare sklearn in the experiment's ``pyproject.toml`` and lock it with uv.
 For mixed numeric/categorical features, reuse the ColumnTransformer factories in
-`examples/sklearn/model.py <../examples/sklearn/model.py>`_.
+`examples/sklearn/model.py <https://github.com/lassiraa/mlef/blob/main/examples/sklearn/model.py>`_.
 
 Save folds, then evaluate candidates
 ------------------------------------

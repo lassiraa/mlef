@@ -92,6 +92,10 @@ exposes the same operations with Pydantic results.
 
 ## Documentation
 
+Read the **[documentation website](https://lassiraa.github.io/mlef/)** for searchable
+guides and API reference. It is hosted free on GitHub Pages and updated from `main`.
+The documentation sources are linked below.
+
 | Guide | Contents |
 | --- | --- |
 | [Setup](docs/setup.rst) | Installation, host vs experiment environments, troubleshooting |

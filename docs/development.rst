@@ -1,7 +1,7 @@
 Development and release checks
 ==============================
 
-`Documentation home <../README.md>`_
+:doc:`Documentation home <index>`
 
 .. code-block:: text
 
@@ -24,10 +24,10 @@ pytest conventions, and simplification rules. ty checks source, tests, and examp
 against Python 3.11 across platforms, with all diagnostics treated as errors.
 Both checks run in CI. Keep any necessary suppressions specific and explain them.
 
-Versioned JSON Schemas are in `schemas <../schemas>`_. The core contracts are
-`run v3 <../schemas/run-v3.schema.json>`_, `experiment v1 <../schemas/experiment-v1.schema.json>`_,
-`result v1 <../schemas/result-v1.schema.json>`_, `environment v1 <../schemas/environment-v1.schema.json>`_,
-and `comparison v1 <../schemas/comparison-v1.schema.json>`_. Regenerate them with
+Versioned JSON Schemas are in `schemas <https://github.com/lassiraa/mlef/tree/main/schemas>`_. The core contracts are
+`run v3 <https://github.com/lassiraa/mlef/blob/main/schemas/run-v3.schema.json>`_, `experiment v1 <https://github.com/lassiraa/mlef/blob/main/schemas/experiment-v1.schema.json>`_,
+`result v1 <https://github.com/lassiraa/mlef/blob/main/schemas/result-v1.schema.json>`_, `environment v1 <https://github.com/lassiraa/mlef/blob/main/schemas/environment-v1.schema.json>`_,
+and `comparison v1 <https://github.com/lassiraa/mlef/blob/main/schemas/comparison-v1.schema.json>`_. Regenerate them with
 ``uv run --locked --extra dev python scripts/export_schemas.py``; CI checks that the
 committed copies match the Pydantic contracts. ``run.json``, ``environment.json`` and
 ``result.json`` are saved atomically. Run directories and artifacts are authoritative;
@@ -56,7 +56,25 @@ Both formats are installed and exercised outside the checkout. Review the comple
 PR stack and platform limitations before tagging or publishing. Publication is a
 separate release action; no CI push or PR event publishes this package.
 
-User documentation is plain reStructuredText in ``docs/`` with README navigation.
-It renders directly on GitHub and ships in the source distribution; no docs server
-or separate build tool is required. Keep runnable examples in ``examples/`` and
-link guides to those sources rather than copying complete programs.
+Documentation website
+---------------------
+
+Sphinx builds the reStructuredText guides in ``docs/`` using its bundled theme
+and search. Preview locally after installing development dependencies:
+
+.. code-block:: text
+
+    uv run --locked --extra dev sphinx-build -n -W --keep-going -b html docs .mlef/docs-site
+    uv run --locked --extra dev python -m http.server 8000 --directory .mlef/docs-site
+
+Open http://localhost:8000/. The build treats warnings and unresolved references
+as failures. Add new pages to ``docs/index.rst`` and use Sphinx document/reference
+roles for internal links. Keep runnable examples in ``examples/`` and link to
+those sources rather than copying complete programs.
+
+The Documentation workflow checks PRs and deploys successful builds from ``main``
+to https://lassiraa.github.io/mlef/. GitHub Pages and standard hosted Actions jobs
+are free for this public repository; no paid service or custom domain is required.
+Pages uses the ``github-pages`` environment with deployment limited to ``main``.
+Generated HTML stays in ignored ``.mlef/`` storage and is not committed. The source
+distribution includes the guides and Sphinx configuration for local builds.
