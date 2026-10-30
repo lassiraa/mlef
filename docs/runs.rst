@@ -1,0 +1,196 @@
+Run and CLI reference
+=====================
+
+`Documentation home <../README.md>`_
+
+Commands
+--------
+
+Run commands from the experiment's Git root. Replace RUN, BASELINE and CANDIDATE
+with complete UUID4 identifiers printed by MLEF. Use ``mlef COMMAND --help``
+for argument help.
+
+.. code-block:: text
+
+    mlef init
+    mlef run train.py --include data.csv --output results -- --seed 7
+    mlef list --json
+    mlef status RUN --json
+    mlef get RUN
+    mlef get RUN metrics.json --output saved-metrics.json
+    mlef compare BASELINE CANDIDATE --json
+    mlef recover RUN --json
+    mlef tabular compare BASELINE CANDIDATE --limit 20 --json
+    mlef tabular profile RUN --json
+    mlef tabular diagnose BASELINE CANDIDATE --minimum-count 20 --limit 20 --json
+
+Outputs, cancellation and limits
+--------------------------------
+
+Scripts write durable results to the directory in ``MLEF_OUTPUT_DIR``. To collect
+another directory written under the project working directory, use
+``mlef run train.py --output results``. The script argument separator is ``--``.
+Declared outputs are required: missing outputs or destination conflicts fail
+the run without overwriting existing artifacts.
+Use Ctrl+C to cancel; mlef gives the container five seconds to stop before
+forcing termination and collecting available outputs.
+
+``mlef run train.py --timeout 60`` places one wall-clock deadline around the entire
+worker, including source preparation, image pulls/builds, environment probes and
+execution. On expiry, mlef kills the owned worker process tree and attempts
+ownership-checked container/output cleanup within a further 15-second grace budget
+(process-tree termination may take up to ten additional seconds). Available outputs
+remain retrievable; interrupted evidence is marked unavailable. Engine failures
+are recorded as incomplete cleanup rather than claimed successful cleanup. The
+deadline does not quota artifact writes or cancel arbitrary remote engine work.
+Omitting the option preserves the existing foreground behavior and stage timeouts.
+
+Runtime controls: ``mlef run train.py --cpus 0.5 --memory 64m --network none``.
+Memory accepts positive bytes or integer k/m/g/t suffixes and disables additional
+swap; CPU values use at most nine decimal places. Docker capability checks and
+container inspection must confirm requested limits before execution. Requested
+and applied values are recorded separately. The execution probe receives CPU and
+memory controls and always uses isolated networking. Runtime controls do not
+constrain build workers or make image/dependency downloads offline. Docker-confirmed
+OOM termination is recorded separately from a script's explicit exit code 137.
+
+``--max-log-bytes 1000000`` bounds combined saved and forwarded script stdout/stderr;
+``--max-runner-log-bytes 1000000`` bounds preparation/build diagnostics in runner.log.
+Limits count bytes, including multibyte text, and stop the run on exhaustion with
+an ``output_limit`` diagnostic. Native command pipes are drained through the limiter;
+they never write directly to the saved log descriptor. Cleanup output is discarded
+when necessary and its outcome is retained in metadata. Structured Docker replies
+have a separate 4 MiB capture ceiling. These limits do not quota artifacts or total
+disk use; combine them with a deadline for a total worker time budget.
+
+Abandoned runs
+--------------
+
+``mlef recover <run-id> [--json]`` explicitly finalizes an abandoned owned run.
+Kernel locks protect live runners, supervising parents and concurrent recovery;
+ordinary status/list queries remain read-only. Recovery requires the recorded
+project identity and exact Docker ownership labels, refuses unknown legacy
+ownership, and leaves metadata unchanged when Docker is unavailable. Missing
+containers never imply success. Collected outputs are never overwritten; a
+collection failure retains the container for inspection/retry. Recovery marks an
+unfinished run failed with an ``abandoned`` diagnostic and can be safely repeated.
+Terminal runs without pending cleanup are returned unchanged, including offline.
+
+Captured source and environment
+-------------------------------
+
+The runner archives tracked files and the explicitly named script into
+``source.tar.gz``, then builds from that saved archive. Include other untracked
+source with ``--include path``. Each run saves the archive SHA-256, included
+untracked paths, Git commit/branch/dirty state, a binary-capable ``changes.patch``
+relative to HEAD (the empty tree for an unborn repository), and the generated
+``Dockerfile``. Detached HEAD records a null branch. The archive defines the actual
+source inputs; the patch contains tracked changes only.
+Root dependency manifests and locks are included even when untracked.
+New runs write version-3 Pydantic metadata. Inspection reads pre-release version-1/version-2
+records without rewriting them and marks unavailable evidence as unknown.
+It resolves ``python:3.12-slim`` to an immutable digest and executes from ``/workspace``; your working tree
+is never mounted into the experiment. Run storage and credential files are
+excluded. Symlink inputs are currently unsupported. Changes made while source
+is being copied can affect the copy, so avoid editing inputs during preparation.
+
+Dependencies use an existing ``pyproject.toml`` plus ``uv.lock``. The pinned uv 0.13.6
+installer runs ``uv sync --locked`` with the container's Python, no dependency groups
+or extras, and no installation of the project itself. Registry packages must have
+compatible wheels; source builds, workspace/path/Git dependencies, alternative
+dependency managers and separate ``uv.toml`` configuration are unsupported. A stale
+lock or unsupported input fails preparation and preserves the captured inputs.
+Scripts with no dependency manifest run without uv. A tooling-only pyproject
+without runtime requirements can also run without a lock; declared dependencies,
+dynamic metadata or Python requirements need a lock.
+
+``environment.json`` records the host, resolved base/uv/execution image identities,
+install command, and actual container Python, OS and package versions. ``run.json``
+also records dependency and Dockerfile hashes. Capture failures prevent execution
+and retain an incomplete-environment warning. Host environment variables are not
+collected. Recorded images and packages still need to be available for a rebuild;
+datasets, network responses and nondeterminism remain the caller's responsibility.
+Background execution is still planned. Experiment code has network access by
+default and can write to its artifact mount.
+
+Offline inspection and artifact retrieval
+-----------------------------------------
+
+Inspect runs without Docker using ``mlef list [--json]`` and
+``mlef status <run-id> [--json]``. ``list`` orders newest first, skips corrupt records
+with stderr diagnostics, and returns a JSON array. An unfinished state describes
+the last saved state; current process liveness is unknown. Unknown IDs, unsupported
+versions, and corrupt records return exit 1; JSON failures include a structured
+error on stdout. Invalid arguments return exit 2.
+
+``mlef get <run-id>`` lists artifacts. Retrieve a file or directory with
+``mlef get <run-id> <artifact-path> --output <destination>``; the default destination
+is the artifact basename in the current directory. Existing destinations, escaping
+paths, links and special files are refused. Full UUID4 run IDs are required.
+
+Experiment intent, metrics and generic comparison
+-------------------------------------------------
+
+Use ``mlef run train.py --experiment experiment.json`` to store a hypothesis,
+``parent_run_id``, ``changed_variables``, canonical ``parameters``, training ``seeds``,
+``dataset`` reference/fingerprint, ``evaluation`` identity, and ``metric_directions``.
+The version-1 specification rejects unknown fields, invalid types and non-finite
+numbers before allocating a run. Parent IDs must already exist. Metadata is saved
+by value and does not inject settings into the script or clone a parent's source.
+
+Scripts may write ``metrics.json`` under ``MLEF_OUTPUT_DIR``: a flat object of finite
+numbers, such as ``{"accuracy": 0.9}``. Booleans, duplicate keys, nested values, NaN
+and infinity are invalid. ``result.json`` records normalized metrics, artifact
+references and stable diagnostics. Missing/invalid optional metrics remain
+retrievable and do not turn a successful script into a failed run. Missing or
+corrupt saved results are displayed as unavailable/invalid evidence.
+
+``mlef compare <baseline-id> <candidate-id> [--json]`` reports the union of metrics,
+absolute deltas and relative deltas ``(candidate - baseline) / abs(baseline)``
+(unavailable for a zero baseline), parameter changes, provenance, execution time,
+intentional changes and artifact references. Human status/comparison summaries
+show at most 20 metrics; JSON includes all metrics without embedding logs.
+Per-metric compatibility is ``declared-compatible``, ``incompatible`` or ``unknown``.
+Compatible declarations require matching nonempty dataset fingerprints,
+evaluation ``protocol_id`` and ``split_fingerprint``, explicitly supplied evaluation
+``seeds`` (an empty map is valid), metric definitions, and maximize/minimize
+directions. Known conflicts take precedence over missing information; unsuccessful
+runs and missing evidence cannot support improvement claims. These checks compare
+declarations, not actual split use, statistical significance or leakage freedom.
+
+Rebuilding saved inputs
+-----------------------
+
+To manually repeat saved inputs after editing the working tree, create a fresh
+build directory containing ``workspace/`` extracted from the saved ``source.tar.gz``
+and the saved ``Dockerfile``. Verify the recorded SHA-256 values first. Archives
+created by mlef contain regular files; for external archives use an extractor that
+rejects escaping paths and links. Build with ``docker build -t mlef-repeat .``, then
+execute the saved ``run.json`` command in that image with ``/workspace`` as its working
+directory and ``MLEF_OUTPUT_DIR=/outputs`` bound to a fresh output directory. Use the
+same user ID/group as the original run when reproducing permissions. The saved
+recipe pins the original base and uv image digests and installs from the archived
+lock. Retrieve declared ``--output`` directories before removing the container.
+
+Exit codes and troubleshooting
+------------------------------
+
+.. list-table:: Exit codes
+   :header-rows: 1
+
+   * - Code
+     - Meaning
+   * - 0
+     - Successful execution/query, including incompatible or unknown comparisons.
+   * - 1
+     - Execution, preparation, storage, collection or query/retrieval failure.
+   * - 2
+     - Invalid arguments, experiment metadata or project configuration.
+   * - 130
+     - Foreground run cancelled by the user.
+
+For installation errors, see `setup troubleshooting <setup.rst#if-setup-fails>`_.
+Use the complete UUID printed by the runner. Retrieval never overwrites an existing
+destination. If metrics are missing/invalid, inspect ``result.json`` diagnostics
+and retrieve the original artifact. If a run remains unfinished after its owner
+has exited, inspect saved evidence and use ``mlef recover RUN``.
