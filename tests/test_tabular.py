@@ -231,11 +231,22 @@ def test_real_sklearn_workflow_and_failure(project: Path) -> None:
     assert "evaluation.json" in api.artifacts(failed.id)
 
 
-def stored(project: Path, data: Path) -> str:
+def stored(
+    project: Path,
+    data: Path,
+    *,
+    protocol: tabular.Protocol | None = None,
+    factory: Callable[[int], BaseEstimator] = linear,
+) -> str:
     api.init()
     identifier = str(uuid4())
     directory = project / ".mlef/runs" / identifier
-    evaluate(data, protocol_for(data), linear, directory / "artifacts")
+    evaluate(
+        data,
+        protocol if protocol is not None else protocol_for(data),
+        factory,
+        directory / "artifacts",
+    )
     save(
         directory / "run.json",
         RunRecord(
@@ -360,3 +371,169 @@ def test_xgboost_inner_splits_and_refit(tmp_path: Path, monkeypatch: pytest.Monk
     versions = read_object(output / "model-recipe.json")["versions"]
     assert isinstance(versions, dict)
     assert "xgboost-cpu" in versions
+
+
+@pytest.mark.parametrize("factory", ["make_regressor", "make_xgboost_regressor"])
+def test_regression_comparison_and_original_units(
+    project: Path, tmp_path: Path, factory: str
+) -> None:
+    if factory == "make_xgboost_regressor":
+        pytest.importorskip("xgboost")
+    from mlef.tabular_runtime import measure
+
+    data = EXAMPLE / "regression.csv"
+    protocol = prepare(
+        data,
+        identifier="id",
+        target="target",
+        numeric=["amount", "age", "tenure"],
+        categorical=["region"],
+        task="regression",
+    )
+    baseline = stored(
+        project, data, protocol=protocol, factory=example_factory("make_dummy_regressor")
+    )
+    candidate = stored(project, data, protocol=protocol, factory=example_factory(factory))
+    comparison = api.compare_tabular(baseline, candidate)
+    assert comparison.compatibility == "matched"
+    assert comparison.metric == "rmse_mean"
+    assert comparison.observation == "improved"
+    assert comparison.delta is not None
+    assert comparison.delta < 0
+    refitted = evaluate(data, protocol, example_factory(factory), tmp_path / "selected", refit=True)
+    assert refitted.complete
+    predict(
+        data,
+        tmp_path / "selected/model.joblib",
+        tmp_path / "selected/model-recipe.json",
+        tmp_path / "inference.csv",
+    )
+    with (tmp_path / "inference.csv").open() as stream:
+        rows = list(csv.DictReader(stream))
+    assert list(rows[0]) == ["id", "prediction"]
+    assert float(rows[0]["prediction"]) > 1
+    assert measure([0.0, 4.0], [0.0, 0.0], "rmse") == pytest.approx(8**0.5)
+
+
+def test_legacy_tabular_evidence_and_invalid_regression_targets(project: Path, data: Path) -> None:
+    from mlef.tabular_comparison import load_evaluation
+
+    identifier = stored(project, data)
+    path = project / ".mlef/runs" / identifier / "artifacts/evaluation.json"
+    values = read_object(path)
+    values["schema_version"] = 1
+    protocol = values["protocol"]
+    assert isinstance(protocol, dict)
+    protocol["schema_version"] = 1
+    values.pop("model_artifact")
+    folds = values["folds"]
+    assert isinstance(folds, list)
+    for fold in folds:
+        assert isinstance(fold, dict)
+        fold.pop("fit")
+    path.write_text(json.dumps(values))
+    assert load_evaluation(project, identifier)[0].protocol.schema_version == 1
+    assert api.compare_tabular(identifier, identifier).compatibility == "matched"
+    data.write_text(data.read_text().replace("0,0,0,", "0,0,NaN,"))
+    with pytest.raises(ValueError, match="finite"):
+        prepare(data, identifier="id", target="target", numeric=["x"], task="regression")
+
+
+def test_regression_target_transform_is_scored_in_original_units(tmp_path: Path) -> None:
+    import numpy as np
+    from sklearn.compose import TransformedTargetRegressor
+    from sklearn.linear_model import Ridge
+
+    from mlef.tabular_runtime import measure
+
+    data = EXAMPLE / "regression.csv"
+    protocol = prepare(
+        data,
+        identifier="id",
+        target="target",
+        numeric=["amount", "age", "tenure"],
+        categorical=["region"],
+        task="regression",
+    )
+
+    def factory(seed: int) -> BaseEstimator:
+        pipeline = example_factory("make_regressor")(seed)
+        pipeline.set_params(
+            model=TransformedTargetRegressor(
+                regressor=Ridge(), func=np.log1p, inverse_func=np.expm1
+            )
+        )
+        return pipeline
+
+    output = tmp_path / "transformed"
+    result = evaluate(data, protocol, factory, output)
+    assert result.complete
+    with (output / "predictions.csv").open() as stream:
+        predictions = list(csv.DictReader(stream))
+    for fold in result.folds:
+        rows = [row for row in predictions if row["fold"] == fold.id]
+        assert min(float(row["truth"]) for row in rows) > 1
+        assert fold.score == pytest.approx(
+            measure(
+                [float(row["truth"]) for row in rows],
+                [float(row["prediction"]) for row in rows],
+                "rmse",
+            )
+        )
+
+
+@pytest.mark.skipif(os.environ.get("MLEF_TEST_DOCKER") != "1", reason="Set MLEF_TEST_DOCKER=1")
+def test_real_regression_selection_and_inference(project: Path) -> None:
+    api.init()
+    for name in ["pyproject.toml", "uv.lock", "regression.csv", "model.py"]:
+        (project / name).write_bytes((EXAMPLE / name).read_bytes())
+    tabular.export_helper("evaluate.py")
+    options = api.RunOptions(timeout_seconds=240, max_log_bytes=65536)
+    prepared = api.run(
+        "evaluate.py",
+        includes=["regression.csv"],
+        options=options,
+        arguments=[
+            "prepare",
+            "--data",
+            "regression.csv",
+            "--task",
+            "regression",
+            "--numeric",
+            "amount",
+            "age",
+            "tenure",
+            "--categorical",
+            "region",
+        ],
+    )
+    assert prepared.state == "succeeded", prepared.model_dump_json()
+    api.get(prepared.id, "protocol.json", output="protocol.json")
+    results = []
+    for factory in ["make_dummy_regressor", "make_xgboost_regressor"]:
+        result = api.run(
+            "evaluate.py",
+            includes=["regression.csv", "model.py", "protocol.json"],
+            arguments=[
+                "evaluate",
+                "--data",
+                "regression.csv",
+                "--factory",
+                f"model:{factory}",
+                "--refit",
+            ],
+            options=options,
+        )
+        assert result.state == "succeeded", result.model_dump_json()
+        results.append(result)
+    assert api.compare_tabular(results[0].id, results[1].id).observation == "improved"
+    for name in ["model.joblib", "model-recipe.json"]:
+        api.get(results[1].id, name, output=name)
+    inferred = api.run(
+        "evaluate.py",
+        includes=["regression.csv", "model.joblib", "model-recipe.json"],
+        arguments=["predict", "--data", "regression.csv"],
+        options=options,
+    )
+    assert inferred.state == "succeeded", inferred.model_dump_json()
+    assert "inference.csv" in api.artifacts(inferred.id)

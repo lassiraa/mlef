@@ -1,5 +1,6 @@
 """From this copied example's Git root: python demo.py (installed MLEF and Docker)."""
 
+import argparse
 from pathlib import Path
 
 from mlef import api, tabular
@@ -7,22 +8,33 @@ from mlef.records import Dataset, Evaluation, Experiment
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--regression", action="store_true")
+    args = parser.parse_args()
+    task = "regression" if args.regression else "binary"
+    data = "regression.csv" if args.regression else "data.csv"
+    numeric = (
+        ["amount", "age", "tenure"] if args.regression else ["radius", "texture", "smoothness"]
+    )
+    categorical = ["region"] if args.regression else ["radius_band"]
     api.init()
     if not Path("evaluate.py").exists():
         tabular.export_helper("evaluate.py")
     options = api.RunOptions(timeout_seconds=180, max_log_bytes=65536)
     prepared = api.run(
         "evaluate.py",
-        includes=["data.csv"],
+        includes=[data],
         options=options,
         arguments=[
             "prepare",
             "--numeric",
-            "radius",
-            "texture",
-            "smoothness",
+            *numeric,
             "--categorical",
-            "radius_band",
+            *categorical,
+            "--data",
+            data,
+            "--task",
+            task,
         ],
     )
     if prepared.state != "succeeded":
@@ -31,13 +43,19 @@ def main() -> None:
     protocol = tabular.Protocol.model_validate_json(Path("protocol.json").read_text())
     candidates: dict[str, api.RunStatus] = {}
     baseline: str | None = None
-    for factory in [
-        "make_dummy",
-        "make_estimator",
-        "make_tree",
-        "make_xgboost",
-        "make_xgboost_candidate",
-    ]:
+    factories = (
+        ["make_dummy_regressor", "make_regressor", "make_xgboost_regressor"]
+        if args.regression
+        else [
+            "make_dummy",
+            "make_estimator",
+            "make_tree",
+            "make_xgboost",
+            "make_xgboost_candidate",
+        ]
+    )
+    metric = protocol.metric + "_mean"
+    for factory in factories:
         spec = Experiment(
             hypothesis=f"Evaluate {factory} on the saved folds",
             parent_run_id=baseline,
@@ -47,15 +65,15 @@ def main() -> None:
                 protocol_id=protocol.fingerprint(),
                 split_fingerprint=protocol.fingerprint(),
                 seeds={"evaluation": protocol.seed},
-                metric_definitions={"roc_auc_mean": "mean fold ROC-AUC"},
+                metric_definitions={metric: f"mean fold {protocol.metric}"},
             ),
-            metric_directions={"roc_auc_mean": "maximize"},
+            metric_directions={metric: protocol.direction},
         )
         Path("experiment.json").write_text(spec.model_dump_json(), encoding="utf-8")
         result = api.run(
             "evaluate.py",
-            includes=["data.csv", "protocol.json", "model.py"],
-            arguments=["evaluate", "--factory", f"model:{factory}"],
+            includes=[data, "protocol.json", "model.py"],
+            arguments=["evaluate", "--factory", f"model:{factory}", "--data", data],
             options=options,
             experiment="experiment.json",
         )
@@ -67,12 +85,13 @@ def main() -> None:
             baseline = result.id
         else:
             print(api.compare_tabular(baseline, result.id).model_dump_json())
-    best = max(candidates, key=lambda name: candidates[name].result.metrics["roc_auc_mean"])
+    choose = max if protocol.direction == "maximize" else min
+    best = choose(candidates, key=lambda name: candidates[name].result.metrics[metric])
     selected = api.run(
         "evaluate.py",
-        includes=["data.csv", "protocol.json", "model.py"],
+        includes=[data, "protocol.json", "model.py"],
         options=options,
-        arguments=["evaluate", "--factory", f"model:{best}", "--refit"],
+        arguments=["evaluate", "--factory", f"model:{best}", "--refit", "--data", data],
     )
     if selected.state != "succeeded":
         raise RuntimeError(selected.model_dump_json())
@@ -80,8 +99,8 @@ def main() -> None:
         api.get(selected.id, name, output=name)
     inference = api.run(
         "evaluate.py",
-        includes=["data.csv", "model.joblib", "model-recipe.json"],
-        arguments=["predict"],
+        includes=[data, "model.joblib", "model-recipe.json"],
+        arguments=["predict", "--data", data],
         options=options,
     )
     if inference.state != "succeeded":

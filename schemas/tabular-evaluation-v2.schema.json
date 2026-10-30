@@ -129,8 +129,11 @@
           "type": "string"
         },
         "direction": {
-          "const": "maximize",
           "default": "maximize",
+          "enum": [
+            "maximize",
+            "minimize"
+          ],
           "title": "Direction",
           "type": "string"
         },
@@ -161,8 +164,11 @@
           "type": "string"
         },
         "metric": {
-          "const": "roc_auc",
           "default": "roc_auc",
+          "enum": [
+            "roc_auc",
+            "rmse"
+          ],
           "title": "Metric",
           "type": "string"
         },
@@ -187,8 +193,11 @@
           "type": "array"
         },
         "schema_version": {
-          "const": 1,
-          "default": 1,
+          "default": 2,
+          "enum": [
+            1,
+            2
+          ],
           "title": "Schema Version",
           "type": "integer"
         },
@@ -211,8 +220,11 @@
           "type": "string"
         },
         "task": {
-          "const": "binary",
           "default": "binary",
+          "enum": [
+            "binary",
+            "regression"
+          ],
           "title": "Task",
           "type": "string"
         },

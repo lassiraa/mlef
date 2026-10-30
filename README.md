@@ -291,6 +291,20 @@ labels participate; validation selection alone is not evidence of generalization
 XGBoost host tests run on Linux/Windows; the base macOS CLI/package matrix remains
 independent of XGBoost, and macOS container execution remains preview.
 
+Run `python demo.py --regression` from a fresh copy of the sklearn example for
+dummy/linear/XGBoost regression, candidate selection, refitting and inference.
+`regression.csv` is an Apache-2.0 synthetic fixture reproducible with
+`make_regression.py` (seed 1729), not a real-world performance benchmark. New
+protocol v2 supports binary classification and regression; binary protocol v1
+remains readable. Regression uses KFold (or supplied group/time partitions),
+finite original-unit targets/predictions, and lower-is-better `rmse_mean`.
+That score is the unweighted mean of fold RMSEs, not pooled OOF RMSE. Regressor
+wrappers may inverse-transform targets through ordinary sklearn prediction;
+the evaluator scores returned predictions in the original target units.
+Inference writes `prediction` for regression and `positive_probability` for
+classification. Early-stopping XGBoost must be the final estimator directly or
+inside a Pipeline; arbitrary nested early-stopping wrappers are unsupported.
+
 Development:
 
 ```text
