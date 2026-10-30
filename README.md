@@ -59,6 +59,16 @@ when necessary and its outcome is retained in metadata. Structured Docker replie
 have a separate 4 MiB capture ceiling. These limits do not quota artifacts or total
 disk use; combine them with a deadline for a total worker time budget.
 
+`mlef recover <run-id> [--json]` explicitly finalizes an abandoned owned run.
+Kernel locks protect live runners, supervising parents and concurrent recovery;
+ordinary status/list queries remain read-only. Recovery requires the recorded
+project identity and exact Docker ownership labels, refuses unknown legacy
+ownership, and leaves metadata unchanged when Docker is unavailable. Missing
+containers never imply success. Collected outputs are never overwritten; a
+collection failure retains the container for inspection/retry. Recovery marks an
+unfinished run failed with an `abandoned` diagnostic and can be safely repeated.
+Terminal runs without pending cleanup are returned unchanged, including offline.
+
 The runner archives tracked files and the explicitly named script into
 `source.tar.gz`, then builds from that saved archive. Include other untracked
 source with `--include path`. Each run saves the archive SHA-256, included

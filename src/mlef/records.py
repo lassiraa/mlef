@@ -101,6 +101,7 @@ class Runtime(Contract):
     container_name: str
     probe_name: str
     container_id: str | None = None
+    cleanup_pending: bool = False
 
 
 class RunRecord(Contract):
