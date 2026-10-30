@@ -12,6 +12,7 @@ from pathlib import Path
 
 from pydantic import Field
 
+from .events import Delivery
 from .evidence import Diagnostic, Result
 from .limits import Limits
 from .locking import run_lock, supervisor_lock
@@ -33,6 +34,7 @@ class Request(Contract):
     limits: Limits = Field(default_factory=Limits)
     max_log_bytes: int | None = Field(default=None, gt=0)
     max_runner_log_bytes: int | None = Field(default=None, gt=0)
+    quiet: bool = False
 
 
 def identity(root: Path, identifier: str, token: str) -> Runtime:
@@ -128,14 +130,17 @@ def cleanup(root: Path, record: RunRecord, run_dir: Path) -> bool:
 
 
 def start_worker(path: Path) -> subprocess.Popen[bytes]:
+    request = Request.model_validate_json(path.read_text(encoding="utf-8"))
     return subprocess.Popen(
         [sys.executable, "-u", "-m", "mlef.supervision", str(path)],
         creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0),
         start_new_session=os.name != "nt",
+        stdout=subprocess.PIPE if request.quiet else None,
+        stderr=subprocess.PIPE if request.quiet else None,
     )
 
 
-def supervise(request: Request) -> int:
+def supervise(request: Request, delivery: Delivery | None = None) -> int:
     from .runner import now, save
 
     root = Path(request.root)
@@ -149,24 +154,49 @@ def supervise(request: Request) -> int:
         path.write_text(request.model_dump_json(), encoding="utf-8")
         began = time.monotonic()
         process = start_worker(path)
+        if request.quiet:
+            delivery = delivery if delivery is not None else Delivery(None, 65536)
+            delivery.start(process)
         cancelled = False
+        callback_failed = False
         try:
             try:
-                remaining = (
-                    max(0, request.timeout - (time.monotonic() - began))
-                    if request.timeout is not None
-                    else None
-                )
-                result = process.wait(timeout=remaining)
+                while True:
+                    if delivery is not None and delivery.errors:
+                        callback_failed = True
+                        raise RuntimeError("Output callback failed.")
+                    remaining = (
+                        request.timeout - (time.monotonic() - began)
+                        if request.timeout is not None
+                        else None
+                    )
+                    if remaining is not None and remaining <= 0:
+                        raise subprocess.TimeoutExpired(process.args, remaining)
+                    try:
+                        result = process.wait(
+                            timeout=min(0.05, remaining) if remaining is not None else 0.05
+                        )
+                        break
+                    except subprocess.TimeoutExpired:
+                        pass
+                if delivery is not None:
+                    delivery.finish()
+                    if delivery.errors:
+                        callback_failed = True
+                        raise RuntimeError("Output callback failed.")
                 if hasattr(os, "killpg") and hasattr(signal, "SIGKILL"):
                     with suppress(ProcessLookupError):
                         os.killpg(process.pid, signal.SIGKILL)
                 return result
             except subprocess.TimeoutExpired:
                 pass
+            except RuntimeError:
+                if not callback_failed:
+                    raise
             except KeyboardInterrupt:
                 cancelled = True
-            kill_tree(process)
+            if process.poll() is None:
+                kill_tree(process)
             run_dir = storage / "runs" / request.identifier
             run_dir.mkdir(parents=True, exist_ok=True)
             (run_dir / "artifacts").mkdir(exist_ok=True)
@@ -196,7 +226,9 @@ def supervise(request: Request) -> int:
                     record.runtime.cleanup_pending = not completed_cleanup
                 record.state = "cancelled" if cancelled else "failed"
                 record.finished_at = now()
-                category = "cancelled" if cancelled else "timeout"
+                category = (
+                    "cancelled" if cancelled else "callback" if callback_failed else "timeout"
+                )
                 record.error = RunError(
                     category=category, message=f"{category.capitalize()} during {record.stage}."
                 )
@@ -215,9 +247,12 @@ def supervise(request: Request) -> int:
                     ),
                 )
                 save(record_path, record)
-                print(f"mlef: {record.error.message} Results: {run_dir}", file=sys.stderr)
+                if not request.quiet:
+                    print(f"mlef: {record.error.message} Results: {run_dir}", file=sys.stderr)
                 return 130 if cancelled else 1
         finally:
+            if delivery is not None:
+                delivery.finish()
             path.unlink(missing_ok=True)
 
 

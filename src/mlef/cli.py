@@ -2,7 +2,6 @@
 
 import argparse
 import json
-import subprocess
 import sys
 from pathlib import Path
 from typing import NoReturn
@@ -12,30 +11,14 @@ from typing_extensions import override
 from . import __version__
 from .comparison import compare
 from .evidence import read_result
+from .project import initialize, project_root
 from .recovery import recover
 from .runner import run
 from .storage import QueryError, artifacts, inspect, list_runs, retrieve
 
 
-def project_root() -> Path:
-    result = subprocess.run(
-        ["git", "rev-parse", "--show-toplevel"], capture_output=True, text=True, check=False
-    )
-    if result.returncode:
-        raise ValueError("Run mlef from the root of a Git repository (use git init first).")
-    root = Path(result.stdout.strip()).resolve()
-    if root != Path.cwd().resolve():
-        raise ValueError(f"Run mlef from the project root: {root}")
-    return root
-
-
 def init(root: Path) -> None:
-    (root / ".mlef" / "runs").mkdir(parents=True, exist_ok=True)
-    ignore = root / ".gitignore"
-    content = ignore.read_text(encoding="utf-8") if ignore.exists() else ""
-    if "/.mlef/" not in content.splitlines() and ".mlef/" not in content.splitlines():
-        with ignore.open("a", encoding="utf-8", newline="\n") as stream:
-            stream.write(("\n" if content and not content.endswith("\n") else "") + "/.mlef/\n")
+    initialize(root)
     print(f"Initialized mlef storage: {root / '.mlef'}")
 
 

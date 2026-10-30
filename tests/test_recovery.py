@@ -42,13 +42,16 @@ def test_recovery_refuses_active_owners(project: Path, owner: str) -> None:
         recovery.recover(project, directory.name)
 
 
+@pytest.mark.parametrize("stalled", [False, True])
 def test_offline_engine_does_not_change_metadata(
-    project: Path, monkeypatch: pytest.MonkeyPatch
+    project: Path, monkeypatch: pytest.MonkeyPatch, stalled: bool
 ) -> None:
     directory = abandoned(project)
     original = (directory / "run.json").read_bytes()
 
     def offline(*args: object) -> str:
+        if stalled:
+            raise subprocess.TimeoutExpired(["docker", "info"], 30)
         raise RuntimeError("engine offline")
 
     monkeypatch.setattr(recovery, "query", offline)

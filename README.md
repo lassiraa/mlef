@@ -100,8 +100,8 @@ also records dependency and Dockerfile hashes. Capture failures prevent executio
 and retain an incomplete-environment warning. Host environment variables are not
 collected. Recorded images and packages still need to be available for a rebuild;
 datasets, network responses and nondeterminism remain the caller's responsibility.
-Background execution is still planned. Experiment code
-runs with network access and can write to its artifact mount.
+Background execution is still planned. Experiment code has network access by
+default and can write to its artifact mount.
 
 Inspect runs without Docker using `mlef list [--json]` and
 `mlef status <run-id> [--json]`. `list` orders newest first, skips corrupt records
@@ -141,6 +141,66 @@ evaluation `protocol_id` and `split_fingerprint`, explicitly supplied evaluation
 directions. Known conflicts take precedence over missing information; unsuccessful
 runs and missing evidence cannot support improvement claims. These checks compare
 declarations, not actual split use, statistical significance or leakage freedom.
+
+Python callers can use the supported synchronous `mlef.api` entry points:
+
+```python
+from mlef import api
+
+api.init()  # Run from the Git root, or pass root="/path/to/project".
+result = api.run(
+    "train.py",
+    arguments=["--seed", "7"],
+    outputs=["results"],
+    options=api.RunOptions(
+        timeout_seconds=120,
+        cpus=0.5,
+        memory_bytes=268435456,
+        network="none",
+        max_log_bytes=65536,
+        max_runner_log_bytes=1048576,
+    ),
+)
+print(result.id, result.state, result.result.metrics)
+```
+
+`init`, `run`, `list_runs`, `status`, `artifacts`, `get`, `compare` and `recover`
+reuse the CLI's execution, storage, comparison and recovery services. `run`,
+`status` and `recover` return a Pydantic `RunStatus` containing run metadata plus
+normalized `result` evidence; `list_runs` returns `RunListing(runs, diagnostics)`.
+Artifact listing returns relative names; `get` returns the retrieved `Path`;
+`compare` returns the existing `Comparison` contract. Use `model_dump(mode="json")`
+for JSON-compatible output. Version-1/version-2 records use the same read adapters
+as CLI queries. Control options are validated by `RunOptions` before execution.
+
+Calls block until execution and finalization finish, and produce no console output.
+Script failures, timeouts and Ctrl+C return their saved failed/cancelled status;
+invalid project/run configuration and query failures raise `MlefError`, whose
+`category` matches the service error (for example `unknown_run`, `unsafe_path` or
+`configuration`). Failed execution is data, so check `state` before claiming success.
+Optional invalid/missing metrics do not change the execution outcome. Pydantic
+rejects invalid option values when constructing `RunOptions`.
+
+Every operation accepts optional `root`: the exact Git root, defaulting to the
+current directory. Script, include, output and experiment paths are relative to
+that root; artifact names are relative to the saved artifact directory. Retrieval
+destinations are relative to the caller's current directory and never overwritten.
+No global working-directory change or shell command parsing is performed.
+
+For live output, pass `on_output=lambda event: ...` to `run`. `LogEvent.stream` is
+`stdout` or `stderr`; `data` contains raw bytes from the worker, including run
+progress messages. Calls are serialized on background drain threads; callbacks
+must return promptly and must decode partial UTF-8 chunks incrementally if needed.
+`callback_bytes` defaults to 65536 bytes total per call; further delivery is
+discarded and a warning is added to the returned status. Saved logs still follow
+their separate limits. A callback exception stops the owned run, preserves partial
+evidence, and raises `MlefError(category="callback")`. Call-specific delivery
+warnings are not persisted. This API supplies foreground execution, without a
+scheduler or asynchronous job protocol.
+
+Copy `examples/tabular` to a fresh Git project and run `python python_demo.py` for
+the Python baseline/candidate/compare/retrieve example, or `python demo.py` for
+the CLI equivalent. Both require Docker and an installed mlef package.
 
 Try the small locked example in its own Git project (from this checkout):
 
@@ -223,7 +283,7 @@ there is no database, hosted backend, daemon or mandatory LLM service.
 | Unknown run | Use the complete UUID printed when the run was allocated. |
 | Existing output destination | Choose a fresh destination; `get` and output collection never overwrite it. |
 | Missing/invalid metrics | Inspect `result.json` diagnostics and retrieve the original artifact. |
-| Unfinished run after abrupt termination | Treat its saved state as historical; liveness and recovery are not implemented. |
+| Unfinished run after abrupt termination | Inspect saved evidence; use `mlef recover <run-id>` after the foreground owner has exited. |
 
 The matched-trial fixture starts with
 `uv run --locked --extra dev python benchmarks/fixture.py prepare <trial-directory>`.
@@ -253,13 +313,14 @@ and their validation under Summary, Validation and optional Compatibility sectio
 For security reports, share sensitive details privately with the maintainer before
 posting a sanitized public reproduction. Do not upload credentials, private datasets
 or complete sensitive run artifacts to issues. Experiment code has network access
-and a writable artifact mount; use only trusted scripts. Timeouts, CPU/memory quotas,
-hard output limits and unattended-agent execution are outside this release.
+by default and a writable artifact mount; use only trusted scripts. Deadlines,
+runtime resource controls and log caps do not enforce a hard artifact quota.
+Unattended-agent execution remains outside this release.
 
 Release-candidate notes: versioned offline inspection, safe artifact retrieval,
 locked execution provenance, experiment intent, normalized evidence and honest
 baseline/candidate comparisons form the first complete feedback loop. Version-1
-run reads are preserved. Python 3.11-3.14 is the tested CLI range; experiment Python
+run reads are preserved, alongside version-2 reads. Python 3.11-3.14 is the tested CLI range; experiment Python
 is independently pinned by the saved image recipe. macOS container validation
 and broader dependency layouts remain follow-up work.
 
