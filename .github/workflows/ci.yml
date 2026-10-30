@@ -43,7 +43,7 @@ jobs:
         with:
           version: "0.13.6"
       - run: uv sync --locked --extra dev --no-editable --python 3.11
-      - run: uv run --locked --extra dev --no-editable pytest tests/test_docker.py -v
+      - run: uv run --locked --extra dev --no-editable pytest -v
         env:
           MLEF_TEST_DOCKER: "1"
 

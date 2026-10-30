@@ -17,7 +17,7 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1] / "schemas"
     root.mkdir(exist_ok=True)
     for name, model in [
-        ("run-v2", RunRecord),
+        ("run-v3", RunRecord),
         ("experiment-v1", Experiment),
         ("result-v1", Result),
         ("comparison-v1", Comparison),

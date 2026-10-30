@@ -69,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
     execute.add_argument("--include", action="append", default=[], type=Path, metavar="PATH")
     execute.add_argument("--output", action="append", default=[], type=Path, metavar="DIRECTORY")
     execute.add_argument("--experiment", type=Path, metavar="JSON_FILE")
+    execute.add_argument("--timeout", type=float, metavar="SECONDS")
     for name in ["list", "status", "get", "compare"]:
         query = commands.add_parser(name, help=f"{name.capitalize()} saved local runs/artifacts.")
         if name == "compare":
@@ -184,6 +185,16 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(retrieve(root, args.run_id, args.artifact, args.output))
             return 0
+        if args.timeout is not None:
+            return run(
+                root,
+                args.script,
+                script_arguments,
+                args.include,
+                args.output,
+                args.experiment,
+                timeout=args.timeout,
+            )
         if args.experiment is not None:
             return run(
                 root, args.script, script_arguments, args.include, args.output, args.experiment
