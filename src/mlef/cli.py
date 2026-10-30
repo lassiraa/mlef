@@ -73,6 +73,8 @@ def main(argv: list[str] | None = None) -> int:
     execute.add_argument("--cpus", type=float)
     execute.add_argument("--memory")
     execute.add_argument("--network", choices=["default", "none"], default="default")
+    execute.add_argument("--max-log-bytes", type=int)
+    execute.add_argument("--max-runner-log-bytes", type=int)
     for name in ["list", "status", "get", "compare"]:
         query = commands.add_parser(name, help=f"{name.capitalize()} saved local runs/artifacts.")
         if name == "compare":
@@ -189,7 +191,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(retrieve(root, args.run_id, args.artifact, args.output))
             return 0
         if (
-            args.timeout is not None
+            args.max_log_bytes is not None
+            or args.max_runner_log_bytes is not None
+            or args.timeout is not None
             or args.cpus is not None
             or args.memory is not None
             or args.network != "default"
@@ -205,6 +209,8 @@ def main(argv: list[str] | None = None) -> int:
                 cpus=args.cpus,
                 memory=args.memory,
                 network=args.network,
+                max_log_bytes=args.max_log_bytes,
+                max_runner_log_bytes=args.max_runner_log_bytes,
             )
         if args.experiment is not None:
             return run(
