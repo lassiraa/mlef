@@ -43,6 +43,7 @@ def check(distribution: Path, temporary: Path) -> None:
             "from mlef import api, tabular; from uuid import uuid4; import sys; "
             "tabular.export_helper('evaluate.py'); assert 'sklearn' not in sys.modules; "
             "assert callable(api.compare_tabular); assert 'xgboost' not in sys.modules; "
+            "assert callable(api.tabular_profile); assert callable(api.tabular_diagnostics); "
             "api.init(); assert api.list_runs().runs == []; "
             "assert api.RunOptions(timeout_seconds=1).timeout_seconds == 1; "
             "\ntry: api.status(str(uuid4()))"

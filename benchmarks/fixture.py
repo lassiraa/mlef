@@ -10,6 +10,7 @@ from typing import Literal
 
 from pydantic import Field, JsonValue, TypeAdapter
 
+from mlef.benchmark import HoldoutScore, TabularTrial
 from mlef.records import Contract, read_json
 
 
@@ -88,8 +89,35 @@ def score(private_labels: Path, predictions: Path) -> float:
     return sum(submitted[key] == value for key, value in labels.items()) / len(labels)
 
 
-def record(path: Path, destination: Path) -> None:
-    trial = Trial.model_validate(read_json(path))
+def read_trial(path: Path) -> Trial | TabularTrial:
+    values = read_json(path)
+    if isinstance(values, dict) and values.get("schema_version") == 2:
+        return TabularTrial.model_validate(values)
+    return Trial.model_validate(values)
+
+
+def record(path: Path, destination: Path, score_ledger: Path | None = None) -> None:
+    trial = read_trial(path)
+    if isinstance(trial, TabularTrial):
+        if trial.state == "completed":
+            if score_ledger is None:
+                raise ValueError("Completed v2 trials require the coordinator's score ledger.")
+            score = HoldoutScore.model_validate(read_json(score_ledger))
+            for field in [
+                "task_fingerprint",
+                "protocol_id",
+                "metric",
+                "direction",
+                "prediction_sha256",
+                "candidate_sha256",
+            ]:
+                if getattr(trial, field) != getattr(score, field):
+                    raise ValueError(f"Trial differs from frozen score ledger: {field}")
+            if trial.heldout_score != score.score:
+                raise ValueError("Trial held-out score differs from its ledger.")
+        with destination.open("x", encoding="utf-8") as stream:
+            stream.write(trial.model_dump_json(indent=2) + "\n")
+        return
     if trial.elapsed_seconds > trial.budget_seconds:
         raise ValueError("Trial exceeded its matched wall-clock budget.")
     first = trial.time_to_first_valid_gain_seconds
@@ -100,8 +128,13 @@ def record(path: Path, destination: Path) -> None:
 
 
 def pair(control_path: Path, mlef_path: Path) -> dict[str, JsonValue]:
-    control = Trial.model_validate(read_json(control_path))
-    treatment = Trial.model_validate(read_json(mlef_path))
+    control, treatment = read_trial(control_path), read_trial(mlef_path)
+    if isinstance(control, TabularTrial) and isinstance(treatment, TabularTrial):
+        from tabular_trials import pair_tabular
+
+        return pair_tabular(control, treatment)
+    if not isinstance(control, Trial) or not isinstance(treatment, Trial):
+        raise ValueError("Cannot pair legacy accuracy trials with v2 tabular trials.")
     if control.condition != "control" or treatment.condition != "mlef":
         raise ValueError("Expected a control trial followed by a mlef trial.")
     for name in ["task_fingerprint", "agent", "model", "budget_seconds", "seed", "repetition"]:
@@ -119,6 +152,8 @@ def pair(control_path: Path, mlef_path: Path) -> dict[str, JsonValue]:
 
 
 def main() -> None:
+    from tabular_trials import TASKS, prepare_tabular, score_tabular
+
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
     generate = commands.add_parser("prepare")
@@ -130,16 +165,29 @@ def main() -> None:
     capture = commands.add_parser("record")
     capture.add_argument("input", type=Path)
     capture.add_argument("output", type=Path)
+    capture.add_argument("--score-ledger", type=Path)
     matched = commands.add_parser("pair")
     matched.add_argument("control", type=Path)
     matched.add_argument("mlef", type=Path)
+    tabular = commands.add_parser("prepare-tabular")
+    tabular.add_argument("destination", type=Path)
+    tabular.add_argument("--task", choices=TASKS, required=True)
+    tabular.add_argument("--seed", type=int, default=17)
+    scoring = commands.add_parser("score-tabular")
+    scoring.add_argument("labels", type=Path)
+    scoring.add_argument("predictions", type=Path)
+    scoring.add_argument("--candidate", type=Path, required=True)
     args = parser.parse_args()
     if args.command == "prepare":
         prepare(args.destination, args.seed)
     elif args.command == "score":
         print(json.dumps({"heldout_accuracy": score(args.labels, args.predictions)}))
     elif args.command == "record":
-        record(args.input, args.output)
+        record(args.input, args.output, args.score_ledger)
+    elif args.command == "prepare-tabular":
+        prepare_tabular(args.destination, args.task, args.seed)
+    elif args.command == "score-tabular":
+        print(score_tabular(args.labels, args.predictions, args.candidate).model_dump_json())
     else:
         print(json.dumps(pair(args.control, args.mlef)))
 

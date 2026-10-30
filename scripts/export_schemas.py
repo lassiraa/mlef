@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from mlef.benchmark import HoldoutScore, TabularTrial
 from mlef.comparison import Comparison
 from mlef.environment import Environment
 from mlef.evidence import Result
@@ -31,6 +32,8 @@ def main() -> None:
         ("tabular-comparison-v1", TabularComparison),
         ("tabular-profile-v1", Profile),
         ("tabular-diagnostics-v1", Diagnostics),
+        ("tabular-trial-v2", TabularTrial),
+        ("holdout-score-v1", HoldoutScore),
     ]:
         content = json.dumps(model.model_json_schema(), indent=2, sort_keys=True) + "\n"
         path = root / f"{name}.schema.json"
