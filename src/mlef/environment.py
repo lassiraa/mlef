@@ -202,8 +202,12 @@ def container_info(
     *,
     name: str | None = None,
     labels: dict[str, str] | None = None,
+    resource_arguments: list[str] | None = None,
 ) -> ContainerInfo:
-    arguments = ["run", "--rm", "--network", "none"]
+    arguments = ["run", "--rm"]
+    arguments += list(resource_arguments or [])
+    if "--network" not in arguments:
+        arguments += ["--network", "none"]
     if name is not None:
         arguments += ["--name", name]
     for key, value in (labels or {}).items():

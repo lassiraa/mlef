@@ -14,7 +14,7 @@ from pathlib import Path
 from typing import BinaryIO, TextIO
 from uuid import uuid4
 
-from pydantic import BaseModel
+from pydantic import BaseModel, JsonValue, TypeAdapter
 
 from .environment import (
     UV_IMAGE,
@@ -27,6 +27,7 @@ from .environment import (
     query,
 )
 from .evidence import experiment_spec, normalize
+from .limits import Limits, memory_bytes
 from .provenance import capture, extract_source
 from .records import Controls, RunError, RunRecord
 
@@ -206,12 +207,22 @@ def run(
     outputs: list[Path],
     experiment: Path | None = None,
     timeout: float | None = None,
+    cpus: float | None = None,
+    memory: str | int | None = None,
+    network: str = "default",
     *,
     _identifier: str | None = None,
     _token: str | None = None,
 ) -> int:
     from .supervision import Request, identity, supervise
 
+    limits = Limits.model_validate(
+        {
+            "cpus": cpus,
+            "memory_bytes": memory_bytes(memory) if isinstance(memory, str) else memory,
+            "network": network,
+        }
+    )
     if timeout is not None and _identifier is None:
         return supervise(
             Request(
@@ -224,6 +235,7 @@ def run(
                 timeout=timeout,
                 identifier=str(uuid4()),
                 token=str(uuid4()),
+                limits=limits,
             )
         )
     if not (root / ".mlef" / "runs").is_dir():
@@ -253,7 +265,7 @@ def run(
         experiment=specification,
         runtime=identity(root, run_id, _token if _token is not None else str(uuid4())),
         controls=Controls(
-            requested={"timeout_seconds": timeout},
+            requested={"timeout_seconds": timeout, **limits.model_dump(mode="json")},
             applied={"supervised_deadline": timeout is not None},
         ),
         stage="source_selection",
@@ -297,6 +309,8 @@ def run(
                         "Docker executable not found. Install Docker and start its engine."
                     )
                 docker(["info"], log)
+                if limits.cpus is not None or limits.memory_bytes is not None:
+                    limits.capabilities(json.loads(query(["info", "--format", "{{json .}}"], log)))
                 stage("image_pull")
                 docker(["pull", BASE_IMAGE], log)
                 environment.base_image = image_identity(BASE_IMAGE, log)
@@ -328,13 +342,14 @@ def run(
             stage("environment_probe")
             runtime = metadata.runtime
             assert runtime is not None
-            if timeout is not None:
+            if timeout is not None or limits.docker_arguments():
                 environment.container = container_info(
                     environment.execution_image.id,
                     log,
                     user,
                     name=runtime.probe_name,
                     labels={"mlef.owner": runtime.token, "mlef.project": runtime.project},
+                    resource_arguments=limits.docker_arguments(),
                 )
             else:
                 environment.container = container_info(environment.execution_image.id, log, user)
@@ -365,10 +380,19 @@ def run(
                     f"mlef.project={runtime.project}",
                 ]
             )
+            create.extend(limits.docker_arguments())
             stage("container_create")
             docker([*create, environment.execution_image.id, *command], log)
             created = True
             runtime.container_id = query(["inspect", "--format", "{{.Id}}", name], log).strip()
+            host = json.loads(
+                query(["inspect", "--format", "{{json .HostConfig}}", runtime.container_id], log)
+            )
+            applied = limits.applied(host)
+            assert metadata.controls is not None
+            metadata.controls.applied.update(
+                TypeAdapter(dict[str, JsonValue]).validate_python(applied)
+            )
             stage("execution")
             # Do not allocate a TTY: Docker then preserves separate stdout/stderr streams.
             # Handle Ctrl+C in mlef; do not also deliver it to the attached Docker client.
@@ -394,6 +418,8 @@ def run(
             if state.get("Error"):
                 raise RuntimeError(f"Container execution failed: {state['Error']}")
             metadata.execution_exit_code = state["ExitCode"]
+            assert metadata.controls is not None
+            metadata.controls.applied["oom_killed"] = bool(state.get("OOMKilled"))
             metadata.execution_seconds = max(
                 0,
                 (
@@ -402,6 +428,10 @@ def run(
                 ).total_seconds(),
             )
             if state["ExitCode"]:
+                if state.get("OOMKilled"):
+                    metadata.error = RunError(
+                        category="oom", message="Docker confirmed an OOM kill."
+                    )
                 raise RuntimeError(f"Script exited with code {state['ExitCode']}; see stderr.log.")
             if attach_exit_code:
                 raise RuntimeError("Docker attach failed; experiment logs may be incomplete.")
@@ -419,9 +449,10 @@ def run(
             ValueError,
             tarfile.TarError,
         ) as error:
-            metadata.error = RunError(
-                category="preparation" if process is None else "execution", message=str(error)
-            )
+            if metadata.error is None:
+                metadata.error = RunError(
+                    category="preparation" if process is None else "execution", message=str(error)
+                )
             log.write((str(error) + "\n").encode("utf-8"))
             print(f"mlef: {error}", file=sys.stderr)
         finally:
