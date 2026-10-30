@@ -8,6 +8,8 @@ from mlef.comparison import Comparison
 from mlef.environment import Environment
 from mlef.evidence import Result
 from mlef.records import Experiment, RunRecord
+from mlef.tabular import Evaluation as TabularEvaluation
+from mlef.tabular import Protocol
 
 
 def main() -> None:
@@ -22,6 +24,8 @@ def main() -> None:
         ("result-v1", Result),
         ("comparison-v1", Comparison),
         ("environment-v1", Environment),
+        ("tabular-protocol-v1", Protocol),
+        ("tabular-evaluation-v1", TabularEvaluation),
     ]:
         content = json.dumps(model.model_json_schema(), indent=2, sort_keys=True) + "\n"
         path = root / f"{name}.schema.json"

@@ -1,0 +1,162 @@
+{
+  "$defs": {
+    "Split": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "score": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Score",
+          "type": "array"
+        },
+        "train": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Train",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "train",
+        "score"
+      ],
+      "title": "Split",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "categorical": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Categorical",
+      "type": "array"
+    },
+    "dataset_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Dataset Sha256",
+      "type": "string"
+    },
+    "direction": {
+      "const": "maximize",
+      "default": "maximize",
+      "title": "Direction",
+      "type": "string"
+    },
+    "group_column": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Group Column"
+    },
+    "id_column": {
+      "title": "Id Column",
+      "type": "string"
+    },
+    "kind": {
+      "default": "stratified",
+      "enum": [
+        "stratified",
+        "group",
+        "time"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "metric": {
+      "const": "roc_auc",
+      "default": "roc_auc",
+      "title": "Metric",
+      "type": "string"
+    },
+    "numeric": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Numeric",
+      "type": "array"
+    },
+    "positive_label": {
+      "default": "1",
+      "title": "Positive Label",
+      "type": "string"
+    },
+    "rows": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 2,
+      "title": "Rows",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "seed": {
+      "default": 17,
+      "title": "Seed",
+      "type": "integer"
+    },
+    "splits": {
+      "items": {
+        "$ref": "#/$defs/Split"
+      },
+      "maxItems": 100,
+      "minItems": 2,
+      "title": "Splits",
+      "type": "array"
+    },
+    "target": {
+      "title": "Target",
+      "type": "string"
+    },
+    "task": {
+      "const": "binary",
+      "default": "binary",
+      "title": "Task",
+      "type": "string"
+    },
+    "time_column": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time Column"
+    }
+  },
+  "required": [
+    "dataset_sha256",
+    "id_column",
+    "target",
+    "numeric",
+    "rows",
+    "splits"
+  ],
+  "title": "Protocol",
+  "type": "object"
+}

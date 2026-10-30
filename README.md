@@ -233,6 +233,34 @@ same user ID/group as the original run when reproducing permissions. The saved
 recipe pins the original base and uv image digests and installs from the archived
 lock. Retrieve declared `--output` directories before removing the container.
 
+For sklearn tabular evaluation, copy `examples/sklearn` into a fresh Git project
+and run `python demo.py` with the installed mlef package and Docker. The host needs
+no ML libraries. The demo exports the installed evaluator's source as `evaluate.py`,
+captures it with the dataset/model/protocol, and installs the example's locked
+Pydantic/pandas/sklearn dependencies inside the container. There is no dependency
+on an unpublished mlef package in the experiment. `model.py` is ordinary Python:
+its `make_estimator(seed)` returns a sklearn estimator/Pipeline.
+
+Preparation saves actual stratified folds once in `protocol.json`; evaluation
+refuses changed dataset bytes, IDs, invalid assignments or missing class coverage.
+Each fold clones/fits the entire Pipeline on training rows only. The versioned
+`evaluation.json` contains the full protocol, per-fold scores, timing and failures;
+`predictions.csv` preserves fold/row alignment and has a recorded SHA-256. A failed
+fold keeps partial evidence, exits unsuccessfully, and never produces a successful
+aggregate `metrics.json`. Provided group/time protocols are validated too: group
+partitions must be disjoint, and training timestamps must strictly precede scoring
+timestamps (timezone-aware ISO-8601). Temporal protocols may omit early scoring rows.
+
+The classification fixture adapts three features from the
+[Wisconsin Diagnostic dataset](https://archive.ics.uci.edu/dataset/17/breast+cancer+wisconsin+diagnostic)
+by Wolberg, Mangasarian, Street and Street (1993), DOI 10.24432/C5DW2B,
+under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/). Row IDs are
+renumbered, every seventeenth radius is blank, and `radius_band` uses a fixed
+radius threshold of 14. These are illustrative alterations; positive class `1`
+means benign in sklearn's source labels. This example supplies no clinical claim.
+Editable experiment code remains trusted: protocol hashes and pipeline evaluation
+do not establish tamper resistance or absence of all forms of leakage.
+
 Development:
 
 ```text
