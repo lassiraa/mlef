@@ -13,6 +13,7 @@ import time
 from collections import Counter
 from collections.abc import Callable
 from datetime import datetime
+from itertools import groupby
 from pathlib import Path
 from typing import TYPE_CHECKING, Literal
 
@@ -140,6 +141,20 @@ class Evaluation(Contract):
 def digest(path: Path) -> str:
     with path.open("rb") as stream:
         return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def measure(truth: list[float], predictions: list[float]) -> float:
+    """ROC-AUC by average ranks, also usable by offline readers without sklearn."""
+    positives = sum(truth)
+    negatives = len(truth) - positives
+    if not positives or not negatives or len(truth) != len(predictions):
+        raise ValueError("ROC-AUC needs aligned predictions and both classes.")
+    rank, positive_ranks = 1, 0.0
+    for _, group in groupby(sorted(zip(predictions, truth, strict=True)), key=lambda pair: pair[0]):
+        labels = [label for _, label in group]
+        positive_ranks += sum(labels) * (rank + (len(labels) - 1) / 2)
+        rank += len(labels)
+    return (positive_ranks - positives * (positives + 1) / 2) / (positives * negatives)
 
 
 def read_object(path: Path) -> dict[str, JsonValue]:

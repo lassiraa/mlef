@@ -261,6 +261,18 @@ means benign in sklearn's source labels. This example supplies no clinical claim
 Editable experiment code remains trusted: protocol hashes and pipeline evaluation
 do not establish tamper resistance or absence of all forms of leakage.
 
+Compare saved fold evidence without Docker or ML libraries using
+`mlef tabular compare BASELINE CANDIDATE --json` or
+`api.compare_tabular(baseline, candidate)`. This checks actual assignments,
+prediction byte hashes, row coverage and labels, and recomputes ROC-AUC from saved
+predictions. Both execution and every required fold must succeed. Different
+protocols are incompatible; absent/partial evidence cannot support an improvement
+claim. Fold summaries default to 20 entries (`--limit`/`limit`, at most 100) and
+report omitted counts; full evidence remains in referenced artifacts. Each input
+evidence file is limited to 32 MiB for offline inspection. Generic `compare`
+retains its original declaration-based behavior. These are consistency checks of
+saved evidence, not independent execution attestation or statistical significance.
+
 Development:
 
 ```text

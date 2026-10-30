@@ -1,7 +1,11 @@
 import csv
+import json
 import os
+import subprocess
+from collections.abc import Callable
 from pathlib import Path
 from typing import Self
+from uuid import uuid4
 
 import pytest
 from sklearn.base import BaseEstimator
@@ -11,7 +15,11 @@ from sklearn.pipeline import Pipeline
 from typing_extensions import override
 
 from mlef import api, tabular
-from mlef.tabular_runtime import evaluate, prepare, read_object, validate_data
+from mlef.records import RunRecord
+from mlef.runner import save
+from mlef.storage import QueryError
+from mlef.tabular_comparison import compare_tabular
+from mlef.tabular_runtime import digest, evaluate, prepare, read_object, validate_data
 
 EXAMPLE = Path(__file__).resolve().parents[1] / "examples/sklearn"
 
@@ -202,3 +210,70 @@ def test_real_sklearn_workflow_and_failure(project: Path) -> None:
     )
     assert failed.state == "failed"
     assert "evaluation.json" in api.artifacts(failed.id)
+
+
+def stored(project: Path, data: Path) -> str:
+    api.init()
+    identifier = str(uuid4())
+    directory = project / ".mlef/runs" / identifier
+    evaluate(data, protocol_for(data), linear, directory / "artifacts")
+    save(
+        directory / "run.json",
+        RunRecord(
+            id=identifier,
+            state="succeeded",
+            command=["python", "evaluate.py"],
+            created_at="2026-10-30T00:00:00Z",
+            finished_at="2026-10-30T00:00:01Z",
+            execution_exit_code=0,
+        ),
+    )
+    return identifier
+
+
+def test_tabular_comparison_matches_cli_and_api(
+    project: Path, data: Path, cli: Callable[..., subprocess.CompletedProcess[str]]
+) -> None:
+    first, second = stored(project, data), stored(project, data)
+    result = api.compare_tabular(first, second, limit=1)
+    assert result.compatibility == "matched"
+    assert result.observation == "unchanged"
+    assert result.omitted_folds == 2
+    assert result.model_dump(mode="json") == json.loads(
+        cli("tabular", "compare", first, second, "--limit", "1", "--json").stdout
+    )
+
+
+@pytest.mark.parametrize("damage", ["protocol", "prediction", "score", "failed_run", "missing"])
+def test_tabular_comparison_refuses_unreliable_winners(
+    project: Path, data: Path, damage: str
+) -> None:
+    first, second = stored(project, data), stored(project, data)
+    directory = project / ".mlef/runs" / second
+    path = directory / "artifacts/evaluation.json"
+    evidence = tabular.Evaluation.model_validate(read_object(path))
+    if damage == "protocol":
+        evidence.protocol.seed += 1
+    elif damage == "prediction":
+        predictions = directory / "artifacts/predictions.csv"
+        with predictions.open() as stream:
+            lines = stream.readlines()
+        predictions.write_text("".join([*lines, lines[1]]))
+        evidence.predictions_sha256 = digest(predictions)
+    elif damage == "score":
+        evidence.folds[0].score = 0.999
+    elif damage == "failed_run":
+        record = RunRecord.model_validate(read_object(directory / "run.json"))
+        record.state = "failed"
+        save(directory / "run.json", record)
+    else:
+        path.unlink()
+    if damage != "missing":
+        save(path, evidence)
+    if damage in {"prediction", "score"}:
+        with pytest.raises(QueryError, match=r"duplicate|score differs"):
+            compare_tabular(project, first, second)
+    else:
+        result = compare_tabular(project, first, second)
+        assert result.observation == "unavailable"
+        assert result.compatibility == ("incompatible" if damage == "protocol" else "unknown")

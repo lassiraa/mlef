@@ -15,6 +15,7 @@ from .project import initialize, project_root
 from .recovery import recover
 from .runner import run
 from .storage import QueryError, artifacts, inspect, list_runs, retrieve
+from .tabular_comparison import compare_tabular
 
 
 def init(root: Path) -> None:
@@ -48,6 +49,15 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"mlef {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init", help="Initialize local run storage in a Git project.")
+    tabular = commands.add_parser(
+        "tabular", help="Inspect actual saved tabular evaluation evidence."
+    )
+    tabular_commands = tabular.add_subparsers(dest="tabular_command", required=True)
+    tabular_compare = tabular_commands.add_parser("compare")
+    tabular_compare.add_argument("baseline")
+    tabular_compare.add_argument("candidate")
+    tabular_compare.add_argument("--limit", type=int, default=20)
+    tabular_compare.add_argument("--json", action="store_true")
     execute = commands.add_parser("run", help="Run a script in the standard Python container.")
     execute.add_argument("script", type=Path)
     execute.add_argument("--include", action="append", default=[], type=Path, metavar="PATH")
@@ -83,6 +93,14 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Only mlef run accepts script arguments after --.")
     try:
         root = project_root()
+        if args.command == "tabular":
+            result = compare_tabular(root, args.baseline, args.candidate, limit=args.limit)
+            print(
+                result.model_dump_json()
+                if args.json
+                else f"{result.compatibility}: {result.observation}; delta={result.delta}"
+            )
+            return 0
         if args.command == "init":
             init(root)
             return 0

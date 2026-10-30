@@ -16,6 +16,8 @@ from .limits import Limits
 from .project import initialize, project_root
 from .records import Contract, RunRecord
 from .supervision import Request, supervise
+from .tabular_comparison import TabularComparison
+from .tabular_comparison import compare_tabular as _compare_tabular
 
 __all__ = [
     "LogEvent",
@@ -25,6 +27,7 @@ __all__ = [
     "RunStatus",
     "artifacts",
     "compare",
+    "compare_tabular",
     "get",
     "init",
     "list_runs",
@@ -121,6 +124,13 @@ def compare(
     baseline: str, candidate: str, *, root: Path | str | None = None
 ) -> comparison.Comparison:
     return comparison.compare(project_root(root), baseline, candidate)
+
+
+@_translated
+def compare_tabular(
+    baseline: str, candidate: str, *, root: Path | str | None = None, limit: int = 20
+) -> TabularComparison:
+    return _compare_tabular(project_root(root), baseline, candidate, limit=limit)
 
 
 @_translated
