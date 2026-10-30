@@ -13,6 +13,7 @@ from pathlib import Path
 from pydantic import Field
 
 from .evidence import Diagnostic, Result
+from .limits import Limits
 from .records import Contract, Controls, RunError, RunRecord, Runtime, read_run
 
 CLEANUP_SECONDS = 15.0
@@ -28,6 +29,7 @@ class Request(Contract):
     timeout: float = Field(gt=0)
     identifier: str
     token: str
+    limits: Limits = Field(default_factory=Limits)
 
 
 def identity(root: Path, identifier: str, token: str) -> Runtime:
@@ -211,6 +213,9 @@ def main() -> None:
             timeout=request.timeout,
             _identifier=request.identifier,
             _token=request.token,
+            cpus=request.limits.cpus,
+            memory=request.limits.memory_bytes,
+            network=request.limits.network,
         )
     except (ValueError, OSError) as error:
         print(f"mlef: {error}", file=sys.stderr)

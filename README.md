@@ -41,6 +41,15 @@ are recorded as incomplete cleanup rather than claimed successful cleanup. The
 deadline does not quota artifact writes or cancel arbitrary remote engine work.
 Omitting the option preserves the existing foreground behavior and stage timeouts.
 
+Runtime controls: `mlef run train.py --cpus 0.5 --memory 64m --network none`.
+Memory accepts positive bytes or integer k/m/g/t suffixes and disables additional
+swap; CPU values use at most nine decimal places. Docker capability checks and
+container inspection must confirm requested limits before execution. Requested
+and applied values are recorded separately. The execution probe receives CPU and
+memory controls and always uses isolated networking. Runtime controls do not
+constrain build workers or make image/dependency downloads offline. Docker-confirmed
+OOM termination is recorded separately from a script's explicit exit code 137.
+
 The runner archives tracked files and the explicitly named script into
 `source.tar.gz`, then builds from that saved archive. Include other untracked
 source with `--include path`. Each run saves the archive SHA-256, included
