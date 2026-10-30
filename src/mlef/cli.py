@@ -12,6 +12,7 @@ from typing_extensions import override
 from . import __version__
 from .comparison import compare
 from .evidence import read_result
+from .recovery import recover
 from .runner import run
 from .storage import QueryError, artifacts, inspect, list_runs, retrieve
 
@@ -75,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     execute.add_argument("--network", choices=["default", "none"], default="default")
     execute.add_argument("--max-log-bytes", type=int)
     execute.add_argument("--max-runner-log-bytes", type=int)
-    for name in ["list", "status", "get", "compare"]:
+    for name in ["list", "status", "get", "compare", "recover"]:
         query = commands.add_parser(name, help=f"{name.capitalize()} saved local runs/artifacts.")
         if name == "compare":
             query.add_argument("baseline")
@@ -141,6 +142,10 @@ def main(argv: list[str] | None = None) -> int:
                 for diagnostic in evidence.diagnostics:
                     print(f"{diagnostic.code}: {diagnostic.message}")
                 print(f"Artifacts: .mlef/runs/{record.id}/artifacts/")
+            return 0
+        if args.command == "recover":
+            record = recover(root, args.run_id)
+            print(record.model_dump_json() if args.json else f"{record.id}: {record.state}")
             return 0
         if args.command == "compare":
             comparison = compare(root, args.baseline, args.candidate)

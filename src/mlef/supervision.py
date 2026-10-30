@@ -14,6 +14,7 @@ from pydantic import Field
 
 from .evidence import Diagnostic, Result
 from .limits import Limits
+from .locking import run_lock, supervisor_lock
 from .records import Contract, Controls, RunError, RunRecord, Runtime, read_run
 
 CLEANUP_SECONDS = 15.0
@@ -58,12 +59,16 @@ def kill_tree(process: subprocess.Popen[bytes]) -> None:
     process.wait(timeout=5)
 
 
-def cleanup(root: Path, record: RunRecord, run_dir: Path) -> None:
-    """Only touch resources whose exact recorded ownership labels match."""
+def cleanup(root: Path, record: RunRecord, run_dir: Path) -> bool:
+    """Collect and remove only exact owned resources; retain them on collection failure."""
+    from .collection import output_destination
+
     runtime = record.runtime
-    if runtime is None:
-        return
+    if runtime is None or runtime.project != identity(root, record.id, runtime.token).project:
+        record.warnings.append("Cleanup refused: project ownership is unknown or mismatched.")
+        return False
     deadline = time.monotonic() + CLEANUP_SECONDS
+    complete = True
 
     def docker(*arguments: str) -> subprocess.CompletedProcess[str]:
         remaining = deadline - time.monotonic()
@@ -79,44 +84,47 @@ def cleanup(root: Path, record: RunRecord, run_dir: Path) -> None:
 
     for name in [runtime.container_name, runtime.probe_name]:
         try:
-            inspection = docker("inspect", name)
+            inspection = docker(
+                "inspect",
+                runtime.container_id
+                if name == runtime.container_name and runtime.container_id is not None
+                else name,
+            )
             if inspection.returncode:
-                record.warnings.append(
-                    f"Cleanup could not inspect {name}; it may require recovery."
-                )
-                continue
-            objects = json.loads(inspection.stdout)
-            container = objects[0]
+                if (
+                    "no such" in inspection.stderr.casefold()
+                    and docker("info", "--format", "{{.ServerVersion}}").returncode == 0
+                ):
+                    continue
+                raise RuntimeError(f"Cannot inspect owned resource {name}.")
+            container = json.loads(inspection.stdout)[0]
             labels = container["Config"].get("Labels") or {}
             if (
                 labels.get("mlef.owner") != runtime.token
                 or labels.get("mlef.project") != runtime.project
             ):
-                record.warnings.append(
-                    f"Refused cleanup of a resource with different ownership: {name}"
-                )
-                continue
+                raise RuntimeError(f"Refused resource with different ownership: {name}")
             identifier = container["Id"]
-            docker("kill", identifier)
+            if container["State"]["Running"] and docker("kill", identifier).returncode:
+                raise RuntimeError(f"Cannot stop owned resource: {identifier}")
             if name == runtime.container_name:
                 for output in record.outputs:
-                    target = run_dir / "artifacts" / output
-                    if target.exists() or not target.resolve().is_relative_to(
-                        (run_dir / "artifacts").resolve()
-                    ):
-                        record.warnings.append(
-                            f"Output not overwritten during deadline cleanup: {output}"
-                        )
-                        continue
-                    target.parent.mkdir(parents=True, exist_ok=True)
-                    copied = docker("cp", f"{identifier}:/workspace/{output}", str(target))
-                    if copied.returncode:
-                        record.warnings.append(f"Output collection incomplete: {output}")
-            removed = docker("rm", "--force", identifier)
-            if removed.returncode:
-                record.warnings.append(f"Container cleanup incomplete: {identifier}")
-        except (OSError, ValueError, subprocess.SubprocessError, TimeoutError) as error:
-            record.warnings.append(f"Bounded cleanup incomplete for {name}: {error}")
+                    target = output_destination(run_dir, output)
+                    if docker("cp", f"{identifier}:/workspace/{output}", str(target)).returncode:
+                        raise RuntimeError(f"Collection incomplete: {output}; container retained.")
+            if docker("rm", "--force", identifier).returncode:
+                raise RuntimeError(f"Container cleanup incomplete: {identifier}")
+        except (
+            OSError,
+            ValueError,
+            RuntimeError,
+            KeyError,
+            IndexError,
+            subprocess.SubprocessError,
+        ) as error:
+            complete = False
+            record.warnings.append(f"Cleanup incomplete for {name}: {error}")
+    return complete
 
 
 def start_worker(path: Path) -> subprocess.Popen[bytes]:
@@ -136,77 +144,81 @@ def supervise(request: Request) -> int:
         raise ValueError("Project is not initialized; run mlef init first.")
     requests = storage / "requests"
     requests.mkdir(exist_ok=True)
-    path = requests / f"{request.identifier}.json"
-    path.write_text(request.model_dump_json(), encoding="utf-8")
-    began = time.monotonic()
-    process = start_worker(path)
-    cancelled = False
-    try:
+    with supervisor_lock(root, request.identifier):
+        path = requests / f"{request.identifier}.json"
+        path.write_text(request.model_dump_json(), encoding="utf-8")
+        began = time.monotonic()
+        process = start_worker(path)
+        cancelled = False
         try:
-            remaining = (
-                max(0, request.timeout - (time.monotonic() - began))
-                if request.timeout is not None
-                else None
-            )
-            result = process.wait(timeout=remaining)
-            if hasattr(os, "killpg") and hasattr(signal, "SIGKILL"):
-                with suppress(ProcessLookupError):
-                    os.killpg(process.pid, signal.SIGKILL)
-            return result
-        except subprocess.TimeoutExpired:
-            pass
-        except KeyboardInterrupt:
-            cancelled = True
-        kill_tree(process)
-        run_dir = storage / "runs" / request.identifier
-        run_dir.mkdir(parents=True, exist_ok=True)
-        (run_dir / "artifacts").mkdir(exist_ok=True)
-        record_path = run_dir / "run.json"
-        record = (
-            read_run(record_path)
-            if record_path.exists()
-            else RunRecord(
-                id=request.identifier,
-                state="preparing",
-                created_at=now(),
-                command=["python", request.script, *request.arguments],
-                outputs=request.outputs,
-                runtime=identity(root, request.identifier, request.token),
-                stage="configuration",
-                controls=Controls(
-                    requested={"timeout_seconds": request.timeout},
-                    applied={"supervised_deadline": True},
-                ),
-            )
-        )
-        for name in ["stdout.log", "stderr.log", "runner.log"]:
-            (run_dir / name).touch(exist_ok=True)
-        cleanup(root, record, run_dir)
-        record.state = "cancelled" if cancelled else "failed"
-        record.finished_at = now()
-        category = "cancelled" if cancelled else "timeout"
-        record.error = RunError(
-            category=category, message=f"{category.capitalize()} during {record.stage}."
-        )
-        save(
-            run_dir / "result.json",
-            Result(
-                run_id=record.id,
-                evidence_status="missing",
-                diagnostics=[
-                    Diagnostic(
-                        code="evidence_interrupted",
-                        severity="warning",
-                        message="Partial artifacts remain retrievable; evidence was interrupted.",
+            try:
+                remaining = (
+                    max(0, request.timeout - (time.monotonic() - began))
+                    if request.timeout is not None
+                    else None
+                )
+                result = process.wait(timeout=remaining)
+                if hasattr(os, "killpg") and hasattr(signal, "SIGKILL"):
+                    with suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                return result
+            except subprocess.TimeoutExpired:
+                pass
+            except KeyboardInterrupt:
+                cancelled = True
+            kill_tree(process)
+            run_dir = storage / "runs" / request.identifier
+            run_dir.mkdir(parents=True, exist_ok=True)
+            (run_dir / "artifacts").mkdir(exist_ok=True)
+            with run_lock(run_dir):
+                record_path = run_dir / "run.json"
+                record = (
+                    read_run(record_path)
+                    if record_path.exists()
+                    else RunRecord(
+                        id=request.identifier,
+                        state="preparing",
+                        created_at=now(),
+                        command=["python", request.script, *request.arguments],
+                        outputs=request.outputs,
+                        runtime=identity(root, request.identifier, request.token),
+                        stage="configuration",
+                        controls=Controls(
+                            requested={"timeout_seconds": request.timeout},
+                            applied={"supervised_deadline": True},
+                        ),
                     )
-                ],
-            ),
-        )
-        save(record_path, record)
-        print(f"mlef: {record.error.message} Results: {run_dir}", file=sys.stderr)
-        return 130 if cancelled else 1
-    finally:
-        path.unlink(missing_ok=True)
+                )
+                for name in ["stdout.log", "stderr.log", "runner.log"]:
+                    (run_dir / name).touch(exist_ok=True)
+                completed_cleanup = cleanup(root, record, run_dir)
+                if record.runtime is not None:
+                    record.runtime.cleanup_pending = not completed_cleanup
+                record.state = "cancelled" if cancelled else "failed"
+                record.finished_at = now()
+                category = "cancelled" if cancelled else "timeout"
+                record.error = RunError(
+                    category=category, message=f"{category.capitalize()} during {record.stage}."
+                )
+                save(
+                    run_dir / "result.json",
+                    Result(
+                        run_id=record.id,
+                        evidence_status="missing",
+                        diagnostics=[
+                            Diagnostic(
+                                code="evidence_interrupted",
+                                severity="warning",
+                                message="Evidence interrupted; partial artifacts were kept.",
+                            )
+                        ],
+                    ),
+                )
+                save(record_path, record)
+                print(f"mlef: {record.error.message} Results: {run_dir}", file=sys.stderr)
+                return 130 if cancelled else 1
+        finally:
+            path.unlink(missing_ok=True)
 
 
 def main() -> None:

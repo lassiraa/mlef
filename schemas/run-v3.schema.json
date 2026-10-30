@@ -257,6 +257,11 @@
     "Runtime": {
       "additionalProperties": false,
       "properties": {
+        "cleanup_pending": {
+          "default": false,
+          "title": "Cleanup Pending",
+          "type": "boolean"
+        },
         "container_id": {
           "anyOf": [
             {

@@ -51,7 +51,7 @@ def test_stalled_worker_is_bounded_and_preserves_stage(
         )
 
     monkeypatch.setattr(supervision, "start_worker", stalled)
-    monkeypatch.setattr(supervision, "cleanup", lambda *args: None)
+    monkeypatch.setattr(supervision, "cleanup", lambda *args: True)
     began = time.monotonic()
     request = supervision.Request(
         root=str(project),
