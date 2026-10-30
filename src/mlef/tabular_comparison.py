@@ -8,7 +8,7 @@ from pydantic import Field
 
 from .records import Contract, read_json
 from .storage import QueryError, artifact_path, inspect
-from .tabular_runtime import Evaluation, Prediction, digest, measure
+from .tabular_runtime import Evaluation, Prediction, digest, measure, parse_evaluation
 
 MAX_EVIDENCE_BYTES = 32 * 1024 * 1024
 
@@ -56,7 +56,7 @@ def load_evaluation(root: Path, identifier: str) -> tuple[Evaluation, list[Predi
             for item in [path, predictions]
         ):
             raise ValueError("Tabular evidence must be regular files of at most 32 MiB each.")
-        result = Evaluation.model_validate(read_json(path))
+        result = parse_evaluation(read_json(path))
         protocol = result.protocol
         expected = {split.id: split for split in protocol.splits}
         seen: set[str] = set()
@@ -66,6 +66,17 @@ def load_evaluation(root: Path, identifier: str) -> tuple[Evaluation, list[Predi
                 raise ValueError("Unknown or duplicate fold results.")
             seen.add(fold.id)
             split = expected[fold.id]
+            if fold.fit is not None:
+                fit = fold.fit
+                if (
+                    len(set(fit.train)) != len(fit.train)
+                    or len(set(fit.validation)) != len(fit.validation)
+                    or set(fit.train) & set(fit.validation)
+                    or set(fit.train) | set(fit.validation) != set(split.train)
+                ):
+                    raise ValueError(
+                        "Inner fitting partitions do not partition outer training rows."
+                    )
             if fold.train_count != len(split.train) or fold.score_count != len(split.score):
                 raise ValueError("Fold counts do not match actual assignments.")
             if fold.state == "succeeded":

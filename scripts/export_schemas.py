@@ -26,7 +26,7 @@ def main() -> None:
         ("comparison-v1", Comparison),
         ("environment-v1", Environment),
         ("tabular-protocol-v1", Protocol),
-        ("tabular-evaluation-v1", TabularEvaluation),
+        ("tabular-evaluation-v2", TabularEvaluation),
         ("tabular-comparison-v1", TabularComparison),
     ]:
         content = json.dumps(model.model_json_schema(), indent=2, sort_keys=True) + "\n"
