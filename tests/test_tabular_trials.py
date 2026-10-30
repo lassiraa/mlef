@@ -74,6 +74,8 @@ def test_frozen_score_ledger_and_trial_recording(
     score = benchmark.score_tabular(labels, predictions, candidate)
     assert score.score == (1 if holdout.task == "binary" else 0)
     assert benchmark.score_tabular(labels, predictions, candidate) == score
+    assert labels.with_name("final-predictions.csv").read_bytes() == predictions.read_bytes()
+    assert labels.with_name("final-candidate.bin").read_bytes() == candidate.read_bytes()
     trial = TabularTrial(
         task_fingerprint=holdout.task_fingerprint,
         protocol_id=holdout.protocol_id,

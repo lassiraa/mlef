@@ -2,6 +2,7 @@
 
 import csv
 import hashlib
+import io
 import json
 import math
 import shutil
@@ -109,7 +110,8 @@ def prepare_tabular(destination: Path, task: str, seed: int) -> None:
 def score_tabular(labels: Path, predictions: Path, candidate: Path) -> HoldoutScore:
     holdout = Holdout.model_validate(read_json(labels))
     submitted: dict[str, float] = {}
-    with predictions.open(encoding="utf-8", newline="") as stream:
+    prediction_bytes = predictions.read_bytes()
+    with io.StringIO(prediction_bytes.decode("utf-8"), newline="") as stream:
         reader = csv.DictReader(stream)
         if reader.fieldnames != ["id", "prediction"]:
             raise ValueError("Submit exactly the columns id,prediction.")
@@ -126,7 +128,7 @@ def score_tabular(labels: Path, predictions: Path, candidate: Path) -> HoldoutSc
             submitted[identifier] = value
     if submitted.keys() != holdout.labels.keys():
         raise ValueError("Submit exactly one prediction per held-out ID.")
-    predicted_hash, candidate_hash = digest(predictions), digest(candidate)
+    predicted_hash, candidate_hash = hashlib.sha256(prediction_bytes).hexdigest(), digest(candidate)
     ledger = labels.with_suffix(".score.json")
     with file_lock(labels.with_suffix(".score.lock")):
         if ledger.exists():
@@ -140,6 +142,13 @@ def score_tabular(labels: Path, predictions: Path, candidate: Path) -> HoldoutSc
                     "Final holdout is already scored; a different finalist is refused."
                 )
             return original
+        candidate_snapshot = labels.with_name("final-candidate.bin")
+        with candidate.open("rb") as source, candidate_snapshot.open("xb") as target:
+            shutil.copyfileobj(source, target)
+        if digest(candidate_snapshot) != candidate_hash:
+            raise ValueError("Candidate changed while freezing the final submission.")
+        with labels.with_name("final-predictions.csv").open("xb") as stream:
+            stream.write(prediction_bytes)
         result = HoldoutScore(
             task_fingerprint=holdout.task_fingerprint,
             protocol_id=holdout.protocol_id,

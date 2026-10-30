@@ -62,5 +62,7 @@ jobs:
       - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
           version: "0.13.6"
+      - name: Check source distributions exclude example environments
+        run: python -c "from pathlib import Path; p = Path('examples/sklearn/.venv'); p.mkdir(parents=True, exist_ok=True); (p / 'exclude_from_distribution.py').write_text('local environment sentinel')"
       - run: uv build
       - run: uv run --locked --extra dev python scripts/check_dist.py dist

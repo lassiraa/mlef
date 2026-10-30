@@ -358,6 +358,10 @@ metric direction, then creates `labels.score.json` under a kernel-held lock. Exa
 retries return the same score; changed predictions, model bytes or private labels
 are refused after scoring. Failed submissions do not consume the final score.
 The ledger records all three hashes and the task/protocol identity.
+Scoring preserves exact prediction/model snapshots beside the private ledger;
+prediction validation and hashing use the same captured bytes. Stop exploration
+before submitting. An interrupted freeze fails closed and retains its private
+files for coordinator inspection rather than overwriting them on a retry.
 
 Record a version-2 trial using `fixture.py record INPUT.json OUTPUT.json --score-ledger LEDGER`.
 The schema is [tabular trial v2](schemas/tabular-trial-v2.schema.json). Completed

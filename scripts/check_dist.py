@@ -4,11 +4,19 @@ import argparse
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 
 
 def check(distribution: Path, temporary: Path) -> None:
+    if distribution.name.endswith(".tar.gz"):
+        with tarfile.open(distribution) as archive:
+            assert not any(
+                part in {".venv", "venv", "__pycache__"}
+                for member in archive.getmembers()
+                for part in Path(member.name).parts
+            ), "Source distribution includes a local environment/cache."
     environment = temporary / "environment"
     subprocess.run(["uv", "venv", "--python", sys.executable, str(environment)], check=True)
     binaries = environment / ("Scripts" if os.name == "nt" else "bin")
