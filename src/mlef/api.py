@@ -18,6 +18,8 @@ from .records import Contract, RunRecord
 from .supervision import Request, supervise
 from .tabular_comparison import TabularComparison
 from .tabular_comparison import compare_tabular as _compare_tabular
+from .tabular_diagnostics import Diagnostics, diagnose, read_profile
+from .tabular_runtime import Profile
 
 __all__ = [
     "LogEvent",
@@ -34,6 +36,8 @@ __all__ = [
     "recover",
     "run",
     "status",
+    "tabular_diagnostics",
+    "tabular_profile",
 ]
 
 P = ParamSpec("P")
@@ -131,6 +135,25 @@ def compare_tabular(
     baseline: str, candidate: str, *, root: Path | str | None = None, limit: int = 20
 ) -> TabularComparison:
     return _compare_tabular(project_root(root), baseline, candidate, limit=limit)
+
+
+@_translated
+def tabular_profile(identifier: str, *, root: Path | str | None = None) -> Profile:
+    return read_profile(project_root(root), identifier)
+
+
+@_translated
+def tabular_diagnostics(
+    baseline: str,
+    candidate: str,
+    *,
+    root: Path | str | None = None,
+    minimum_count: int = 20,
+    limit: int = 20,
+) -> Diagnostics:
+    return diagnose(
+        project_root(root), baseline, candidate, minimum_count=minimum_count, limit=limit
+    )
 
 
 @_translated

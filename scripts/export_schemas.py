@@ -9,8 +9,9 @@ from mlef.environment import Environment
 from mlef.evidence import Result
 from mlef.records import Experiment, RunRecord
 from mlef.tabular import Evaluation as TabularEvaluation
-from mlef.tabular import Protocol
+from mlef.tabular import Profile, Protocol
 from mlef.tabular_comparison import TabularComparison
+from mlef.tabular_diagnostics import Diagnostics
 
 
 def main() -> None:
@@ -28,6 +29,8 @@ def main() -> None:
         ("tabular-protocol-v2", Protocol),
         ("tabular-evaluation-v2", TabularEvaluation),
         ("tabular-comparison-v1", TabularComparison),
+        ("tabular-profile-v1", Profile),
+        ("tabular-diagnostics-v1", Diagnostics),
     ]:
         content = json.dumps(model.model_json_schema(), indent=2, sort_keys=True) + "\n"
         path = root / f"{name}.schema.json"

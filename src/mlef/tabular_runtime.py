@@ -145,6 +145,98 @@ class Prediction(Contract):
     prediction: float
 
 
+class ColumnProfile(Contract):
+    name: str = Field(max_length=200)
+    name_sha256: str = Field(pattern="^[a-f0-9]{64}$")
+    kind: Literal["numeric", "categorical"]
+    missing: int = Field(ge=0)
+    cardinality: int = Field(ge=0)
+    observations: list[Literal["constant", "mostly_missing", "high_cardinality"]] = Field(
+        max_length=3
+    )
+
+
+class TargetProfile(Contract):
+    positive: int | None = None
+    negative: int | None = None
+    minimum: float | None = None
+    maximum: float | None = None
+    mean: float | None = None
+
+
+class Profile(Contract):
+    schema_version: Literal[1] = 1
+    protocol_id: str = Field(pattern="^[a-f0-9]{64}$")
+    row_count: int = Field(gt=0)
+    feature_count: int = Field(gt=0)
+    duplicate_feature_rows: int = Field(ge=0)
+    columns: list[ColumnProfile] = Field(max_length=20)
+    omitted_columns: int = Field(ge=0)
+    target: TargetProfile
+    split_kind: Literal["stratified", "group", "time"]
+    group_count: int | None = None
+    time_start: str | None = Field(default=None, max_length=64)
+    time_end: str | None = Field(default=None, max_length=64)
+
+
+def profile_data(path: Path, protocol: Protocol) -> Profile:
+    """Summarize only the supplied exploration dataset; never read other directories."""
+    rows = validate_data(path, protocol)
+    features = protocol.numeric + protocol.categorical
+    columns: list[ColumnProfile] = []
+    for name in features[:20]:
+        values = [row[name] for row in rows.values()]
+        missing, cardinality = values.count(""), len(set(values) - {""})
+        observations: list[Literal["constant", "mostly_missing", "high_cardinality"]] = []
+        if cardinality <= 1:
+            observations.append("constant")
+        if missing > len(rows) / 2:
+            observations.append("mostly_missing")
+        if name in protocol.categorical and cardinality > len(rows) * 0.9:
+            observations.append("high_cardinality")
+        columns.append(
+            ColumnProfile(
+                name=name[:200],
+                name_sha256=hashlib.sha256(name.encode()).hexdigest(),
+                kind="numeric" if name in protocol.numeric else "categorical",
+                missing=missing,
+                cardinality=cardinality,
+                observations=observations,
+            )
+        )
+    if protocol.task == "binary":
+        positives = sum(row[protocol.target] == protocol.positive_label for row in rows.values())
+        target = TargetProfile(positive=positives, negative=len(rows) - positives)
+    else:
+        labels = [float(row[protocol.target]) for row in rows.values()]
+        target = TargetProfile(
+            minimum=min(labels),
+            maximum=max(labels),
+            mean=math.fsum(value / len(labels) for value in labels),
+        )
+    unique = {tuple(row[name] for name in features) for row in rows.values()}
+    times = (
+        [datetime.fromisoformat(row[protocol.time_column]) for row in rows.values()]
+        if protocol.time_column is not None
+        else []
+    )
+    return Profile(
+        protocol_id=protocol.fingerprint(),
+        row_count=len(rows),
+        feature_count=len(features),
+        duplicate_feature_rows=len(rows) - len(unique),
+        columns=columns,
+        omitted_columns=max(0, len(features) - 20),
+        target=target,
+        split_kind=protocol.kind,
+        group_count=len({row[protocol.group_column] for row in rows.values()})
+        if protocol.group_column is not None
+        else None,
+        time_start=min(times).isoformat() if times else None,
+        time_end=max(times).isoformat() if times else None,
+    )
+
+
 class Evaluation(Contract):
     schema_version: Literal[2] = 2
     protocol: Protocol
@@ -458,9 +550,18 @@ def evaluate(
     rows = validate_data(path, protocol)
     output.mkdir(parents=True, exist_ok=True)
     if any(
-        (output / name).exists() for name in ["evaluation.json", "predictions.csv", "metrics.json"]
+        (output / name).exists()
+        for name in [
+            "evaluation.json",
+            "predictions.csv",
+            "metrics.json",
+            "profile.json",
+            "model.joblib",
+            "model-recipe.json",
+        ]
     ):
         raise ValueError("Evaluation destinations already exist.")
+    save(output / "profile.json", profile_data(path, protocol))
     frame = feature_frame(rows, protocol.numeric, protocol.categorical)
     features = protocol.numeric + protocol.categorical
     target = (

@@ -1,0 +1,284 @@
+{
+  "$defs": {
+    "ErrorSlice": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline_mae": {
+          "title": "Baseline Mae",
+          "type": "number"
+        },
+        "candidate_mae": {
+          "title": "Candidate Mae",
+          "type": "number"
+        },
+        "count": {
+          "title": "Count",
+          "type": "integer"
+        },
+        "delta": {
+          "title": "Delta",
+          "type": "number"
+        },
+        "name": {
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "count",
+        "baseline_mae",
+        "candidate_mae",
+        "delta"
+      ],
+      "title": "ErrorSlice",
+      "type": "object"
+    },
+    "FoldComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "baseline": {
+          "title": "Baseline",
+          "type": "number"
+        },
+        "candidate": {
+          "title": "Candidate",
+          "type": "number"
+        },
+        "delta": {
+          "title": "Delta",
+          "type": "number"
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "baseline",
+        "candidate",
+        "delta"
+      ],
+      "title": "FoldComparison",
+      "type": "object"
+    },
+    "TabularComparison": {
+      "additionalProperties": false,
+      "properties": {
+        "artifacts": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Artifacts",
+          "type": "object"
+        },
+        "baseline_id": {
+          "title": "Baseline Id",
+          "type": "string"
+        },
+        "baseline_mean": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline Mean"
+        },
+        "baseline_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Baseline Seconds"
+        },
+        "candidate_id": {
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "candidate_mean": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate Mean"
+        },
+        "candidate_seconds": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Candidate Seconds"
+        },
+        "compatibility": {
+          "enum": [
+            "matched",
+            "incompatible",
+            "unknown"
+          ],
+          "title": "Compatibility",
+          "type": "string"
+        },
+        "delta": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delta"
+        },
+        "direction": {
+          "anyOf": [
+            {
+              "enum": [
+                "maximize",
+                "minimize"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Direction"
+        },
+        "folds": {
+          "items": {
+            "$ref": "#/$defs/FoldComparison"
+          },
+          "title": "Folds",
+          "type": "array"
+        },
+        "limitations": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Limitations",
+          "type": "array"
+        },
+        "metric": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Metric"
+        },
+        "observation": {
+          "default": "unavailable",
+          "enum": [
+            "improved",
+            "regressed",
+            "unchanged",
+            "unavailable"
+          ],
+          "title": "Observation",
+          "type": "string"
+        },
+        "omitted_folds": {
+          "default": 0,
+          "title": "Omitted Folds",
+          "type": "integer"
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Reasons",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "baseline_id",
+        "candidate_id",
+        "compatibility"
+      ],
+      "title": "TabularComparison",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "comparison": {
+      "$ref": "#/$defs/TabularComparison"
+    },
+    "error_measure": {
+      "enum": [
+        "absolute probability error",
+        "absolute target error",
+        "unavailable"
+      ],
+      "title": "Error Measure",
+      "type": "string"
+    },
+    "limitation": {
+      "default": "Exploratory overlapping slices do not establish causal or held-out gains.",
+      "title": "Limitation",
+      "type": "string"
+    },
+    "minimum_count": {
+      "title": "Minimum Count",
+      "type": "integer"
+    },
+    "omitted_slices": {
+      "title": "Omitted Slices",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "slices": {
+      "items": {
+        "$ref": "#/$defs/ErrorSlice"
+      },
+      "title": "Slices",
+      "type": "array"
+    }
+  },
+  "required": [
+    "comparison",
+    "error_measure",
+    "minimum_count",
+    "slices",
+    "omitted_slices"
+  ],
+  "title": "Diagnostics",
+  "type": "object"
+}

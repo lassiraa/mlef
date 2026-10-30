@@ -305,6 +305,32 @@ Inference writes `prediction` for regression and `positive_probability` for
 classification. Early-stopping XGBoost must be the final estimator directly or
 inside a Pipeline; arbitrary nested early-stopping wrappers are unsupported.
 
+For agent feedback, use `mlef tabular profile RUN --json` /
+`api.tabular_profile(run)` and `mlef tabular diagnose BASELINE CANDIDATE --json` /
+`api.tabular_diagnostics(baseline, candidate)`. Evaluation saves a training/search
+dataset profile with missingness, cardinality, constants, duplicate-feature rows,
+target distribution/range and declared group/time structure. Profiles return at
+most 20 feature names (200 characters each, with full-name hashes) and omitted
+counts; no raw categorical values or row samples are included.
+
+Diagnostics compare aligned OOF absolute probability errors for classification
+and absolute target errors for regression. Fixed slices cover the whole dataset,
+target class/probability bands, or baseline-prediction quartiles. The default
+minimum count is 20 (`--minimum-count`, at least 2); output defaults to 20 slices
+and reports omissions from filtering/truncation. These overlapping exploratory
+slices help formulate hypotheses; they do not establish leakage or causal gains.
+Both operations are offline and need no ML libraries.
+
+A supervised agent workflow is: inspect the task/profile and existing runs;
+establish baselines; state a hypothesis and parent run in `Experiment`; change a
+small set of ordinary Python features/preprocessing/parameters; evaluate on saved
+folds; compare scores, errors and runtime; retain or reject the candidate; then
+freeze a finalist for independent testing. The demo records hypothesis/parent
+metadata, including the selected refit's actual source candidate. Set per-run
+deadlines/log/resource limits and an explicit exploration trial/time budget.
+MLEF currently enforces per-run controls, not a global exploration budget or hard
+artifact quota. Keep final-test labels outside the agent workspace and run inputs.
+
 Development:
 
 ```text
