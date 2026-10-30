@@ -197,7 +197,9 @@ def test_reference_docker_inputs_exclude_private_labels(
 
 
 @pytest.mark.parametrize("task", ["binary", "regression"])
-def test_matched_trial_direction_settings_and_budget(benchmark: ModuleType, task: str) -> None:
+def test_matched_trial_direction_settings_and_budget(
+    benchmark: ModuleType, task: str, tmp_path: Path
+) -> None:
     values = {
         "task_fingerprint": "a" * 64,
         "protocol_id": "b" * 64,
@@ -242,3 +244,27 @@ def test_matched_trial_direction_settings_and_budget(benchmark: ModuleType, task
         )
     with pytest.raises(ValueError, match="exceeded"):
         TabularTrial.model_validate({**values, "elapsed_seconds": 61.0})
+    records = tmp_path / "records"
+    records.mkdir()
+    (records / "control.json").write_text(control.model_dump_json())
+    (records / "mlef.json").write_text(treatment.model_dump_json())
+    failed = TabularTrial.model_validate(
+        {
+            **treatment.model_dump(),
+            "repetition": 1,
+            "state": "failed",
+            "failure": "timeout",
+            "heldout_score": None,
+        }
+    )
+    (records / "failed.json").write_text(failed.model_dump_json())
+    (records / "invalid.json").write_text("invalid")
+    report = benchmark.report_trials(records, 1)
+    assert report["record_count"] == 3
+    assert report["pair_count"] == 1
+    assert report["unmatched_records"] == 1
+    assert report["invalid_records"] == 1
+    assert report["state_counts"]["mlef_failed"] == 1
+    (records / "duplicate.json").write_text(treatment.model_dump_json())
+    assert benchmark.report_trials(records)["duplicate_groups"] == 1
+    assert benchmark.report_trials(records)["pair_count"] == 0

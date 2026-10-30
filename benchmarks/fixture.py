@@ -152,7 +152,7 @@ def pair(control_path: Path, mlef_path: Path) -> dict[str, JsonValue]:
 
 
 def main() -> None:
-    from tabular_trials import TASKS, prepare_tabular, score_tabular
+    from tabular_trials import TASKS, prepare_tabular, report_trials, score_tabular
 
     parser = argparse.ArgumentParser()
     commands = parser.add_subparsers(dest="command", required=True)
@@ -177,6 +177,9 @@ def main() -> None:
     scoring.add_argument("labels", type=Path)
     scoring.add_argument("predictions", type=Path)
     scoring.add_argument("--candidate", type=Path, required=True)
+    reporting = commands.add_parser("report")
+    reporting.add_argument("directory", type=Path)
+    reporting.add_argument("--limit", type=int, default=20)
     args = parser.parse_args()
     if args.command == "prepare":
         prepare(args.destination, args.seed)
@@ -188,6 +191,8 @@ def main() -> None:
         prepare_tabular(args.destination, args.task, args.seed)
     elif args.command == "score-tabular":
         print(score_tabular(args.labels, args.predictions, args.candidate).model_dump_json())
+    elif args.command == "report":
+        print(json.dumps(report_trials(args.directory, args.limit)))
     else:
         print(json.dumps(pair(args.control, args.mlef)))
 

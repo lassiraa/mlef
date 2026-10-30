@@ -8,6 +8,8 @@ import math
 import shutil
 from pathlib import Path
 
+from pydantic import TypeAdapter
+
 from mlef.benchmark import Holdout, HoldoutScore, TabularTrial
 from mlef.locking import file_lock
 from mlef.records import JsonValue, read_json
@@ -217,3 +219,81 @@ def pair_tabular(control: TabularTrial, treatment: TabularTrial) -> dict[str, Js
             "This observation alone does not establish uplift."
         ),
     }
+
+
+def report_trials(directory: Path, limit: int = 20) -> dict[str, JsonValue]:
+    """Include failed/unmatched/duplicate records; never choose the most favorable pair."""
+    if type(limit) is not int or not 1 <= limit <= 200:
+        raise ValueError("Report limit must be between 1 and 200.")
+    if not directory.is_dir():
+        raise ValueError("Trial record directory does not exist.")
+    groups: dict[str, dict[str, TabularTrial]] = {}
+    group_counts: dict[str, int] = {}
+    duplicates: set[str] = set()
+    states: dict[str, int] = {}
+    errors: list[str] = []
+    records = 0
+    for path in sorted(directory.glob("*.json")):
+        try:
+            trial = TabularTrial.model_validate(read_json(path))
+        except (ValueError, OSError) as error:
+            errors.append(f"{path.name}: {str(error)[:300]}")
+            continue
+        records += 1
+        state = f"{trial.condition}_{trial.state}"
+        states[state] = states.get(state, 0) + 1
+        if trial.condition == "reference":
+            continue
+        values = trial.model_dump(mode="json")
+        identity = {
+            name: values[name]
+            for name in [
+                "task_fingerprint",
+                "protocol_id",
+                "task",
+                "metric",
+                "direction",
+                "agent",
+                "model",
+                "agent_settings",
+                "budget_seconds",
+                "seed",
+                "repetition",
+            ]
+        }
+        key = json.dumps(identity, sort_keys=True)
+        group = groups.setdefault(key, {})
+        group_counts[key] = group_counts.get(key, 0) + 1
+        if trial.condition in group:
+            duplicates.add(key)
+        group[trial.condition] = trial
+    pairs: list[dict[str, JsonValue]] = []
+    unmatched = 0
+    for key, group in groups.items():
+        if key in duplicates or group.keys() != {"control", "mlef"}:
+            unmatched += group_counts[key]
+            continue
+        result = pair_tabular(group["control"], group["mlef"])
+        result["task_fingerprint"] = group["control"].task_fingerprint
+        result["repetition"] = group["control"].repetition
+        pairs.append(result)
+    return TypeAdapter(dict[str, JsonValue]).validate_python(
+        {
+            "schema_version": 1,
+            "record_count": records,
+            "state_counts": states,
+            "pair_count": len(pairs),
+            "scored_pairs": sum(pair["improvement"] is not None for pair in pairs),
+            "pairs": pairs[:limit],
+            "omitted_pairs": max(0, len(pairs) - limit),
+            "unmatched_records": unmatched,
+            "duplicate_groups": len(duplicates),
+            "invalid_records": len(errors),
+            "diagnostics": errors[:20],
+            "omitted_diagnostics": max(0, len(errors) - 20),
+            "limitation": (
+                "Includes failures and exclusions. Different metric magnitudes are not pooled; "
+                "no significance is inferred."
+            ),
+        }
+    )

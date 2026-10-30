@@ -373,6 +373,11 @@ interventions and the selected candidate's hashes. `fixture.py pair CONTROL MLEF
 requires matching task/protocol/model/settings/budget and reports direction-aware
 held-out improvement alongside costs and failures. Legacy accuracy-only trial
 recording/pairing remains available; regression is never stored as accuracy.
+`fixture.py report RECORDS_DIRECTORY --limit 20` summarizes repeated v2 records
+with state counts, matched pairs, failures, unmatched/duplicate groups and invalid
+records. It reports omissions explicitly and never pools AUC/RMSE magnitudes or
+quietly selects the best duplicate observation. Keep trial records in their own
+directory, separate from score ledgers and task manifests.
 
 Use separate matched workspaces/repetitions and report every trial. Configure actual
 OS/container/tool access so exploration cannot read coordinator files; the fixture
