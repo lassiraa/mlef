@@ -4,11 +4,19 @@ import argparse
 import os
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 
 
 def check(distribution: Path, temporary: Path) -> None:
+    if distribution.name.endswith(".tar.gz"):
+        with tarfile.open(distribution) as archive:
+            assert not any(
+                part in {".venv", "venv", "__pycache__"}
+                for member in archive.getmembers()
+                for part in Path(member.name).parts
+            ), "Source distribution includes a local environment/cache."
     environment = temporary / "environment"
     subprocess.run(["uv", "venv", "--python", sys.executable, str(environment)], check=True)
     binaries = environment / ("Scripts" if os.name == "nt" else "bin")
@@ -43,6 +51,7 @@ def check(distribution: Path, temporary: Path) -> None:
             "from mlef import api, tabular; from uuid import uuid4; import sys; "
             "tabular.export_helper('evaluate.py'); assert 'sklearn' not in sys.modules; "
             "assert callable(api.compare_tabular); assert 'xgboost' not in sys.modules; "
+            "assert callable(api.tabular_profile); assert callable(api.tabular_diagnostics); "
             "api.init(); assert api.list_runs().runs == []; "
             "assert api.RunOptions(timeout_seconds=1).timeout_seconds == 1; "
             "\ntry: api.status(str(uuid4()))"

@@ -1,0 +1,218 @@
+{
+  "$defs": {
+    "JsonValue": {}
+  },
+  "additionalProperties": false,
+  "properties": {
+    "agent": {
+      "title": "Agent",
+      "type": "string"
+    },
+    "agent_settings": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Agent Settings",
+      "type": "object"
+    },
+    "budget_seconds": {
+      "exclusiveMinimum": 0,
+      "title": "Budget Seconds",
+      "type": "integer"
+    },
+    "candidate_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Candidate Sha256"
+    },
+    "condition": {
+      "enum": [
+        "control",
+        "mlef",
+        "reference"
+      ],
+      "title": "Condition",
+      "type": "string"
+    },
+    "direction": {
+      "enum": [
+        "maximize",
+        "minimize"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "elapsed_seconds": {
+      "minimum": 0,
+      "title": "Elapsed Seconds",
+      "type": "number"
+    },
+    "failure": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Failure"
+    },
+    "heldout_score": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Heldout Score"
+    },
+    "intervention_count": {
+      "minimum": 0,
+      "title": "Intervention Count",
+      "type": "integer"
+    },
+    "metric": {
+      "enum": [
+        "roc_auc",
+        "rmse"
+      ],
+      "title": "Metric",
+      "type": "string"
+    },
+    "model": {
+      "title": "Model",
+      "type": "string"
+    },
+    "prediction_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Prediction Sha256"
+    },
+    "protocol_id": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Protocol Id",
+      "type": "string"
+    },
+    "repetition": {
+      "minimum": 0,
+      "title": "Repetition",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 2,
+      "default": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "seed": {
+      "title": "Seed",
+      "type": "integer"
+    },
+    "state": {
+      "enum": [
+        "completed",
+        "failed",
+        "cancelled"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "task": {
+      "enum": [
+        "binary",
+        "regression"
+      ],
+      "title": "Task",
+      "type": "string"
+    },
+    "task_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Task Fingerprint",
+      "type": "string"
+    },
+    "time_to_first_valid_gain_seconds": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Time To First Valid Gain Seconds"
+    },
+    "tool_output_bytes": {
+      "minimum": 0,
+      "title": "Tool Output Bytes",
+      "type": "integer"
+    },
+    "valid_comparisons": {
+      "minimum": 0,
+      "title": "Valid Comparisons",
+      "type": "integer"
+    },
+    "valid_experiments": {
+      "minimum": 0,
+      "title": "Valid Experiments",
+      "type": "integer"
+    },
+    "validation_score": {
+      "anyOf": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Validation Score"
+    }
+  },
+  "required": [
+    "task_fingerprint",
+    "protocol_id",
+    "task",
+    "metric",
+    "direction",
+    "condition",
+    "agent",
+    "model",
+    "budget_seconds",
+    "seed",
+    "repetition",
+    "state",
+    "elapsed_seconds",
+    "tool_output_bytes",
+    "intervention_count",
+    "valid_experiments",
+    "valid_comparisons"
+  ],
+  "title": "TabularTrial",
+  "type": "object"
+}

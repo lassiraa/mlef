@@ -111,7 +111,7 @@ def main() -> None:
         api.get(selected.id, name, output=name)
     inference = api.run(
         "evaluate.py",
-        includes=[data, "model.joblib", "model-recipe.json"],
+        includes=[data, "model.py", "model.joblib", "model-recipe.json"],
         arguments=["predict", "--data", data],
         options=options,
     )

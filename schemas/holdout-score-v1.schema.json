@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "candidate_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Candidate Sha256",
+      "type": "string"
+    },
+    "direction": {
+      "enum": [
+        "maximize",
+        "minimize"
+      ],
+      "title": "Direction",
+      "type": "string"
+    },
+    "labels_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Labels Sha256",
+      "type": "string"
+    },
+    "metric": {
+      "enum": [
+        "roc_auc",
+        "rmse"
+      ],
+      "title": "Metric",
+      "type": "string"
+    },
+    "prediction_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Prediction Sha256",
+      "type": "string"
+    },
+    "protocol_id": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Protocol Id",
+      "type": "string"
+    },
+    "rows": {
+      "exclusiveMinimum": 0,
+      "title": "Rows",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "score": {
+      "minimum": 0,
+      "title": "Score",
+      "type": "number"
+    },
+    "task_fingerprint": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Task Fingerprint",
+      "type": "string"
+    }
+  },
+  "required": [
+    "task_fingerprint",
+    "protocol_id",
+    "metric",
+    "direction",
+    "score",
+    "prediction_sha256",
+    "candidate_sha256",
+    "labels_sha256",
+    "rows"
+  ],
+  "title": "HoldoutScore",
+  "type": "object"
+}
