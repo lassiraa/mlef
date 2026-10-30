@@ -38,7 +38,7 @@ def test_legacy_adapter_is_read_only(project: Path) -> None:
     path.write_text(json.dumps(data))
     original = path.read_bytes()
     record = read_run(path)
-    assert record.schema_version == 2
+    assert record.schema_version == 3
     assert record.git is record.inputs is record.experiment is None
     assert "Legacy" in record.warnings[-1]
     assert path.read_bytes() == original

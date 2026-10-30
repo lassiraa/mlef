@@ -24,10 +24,11 @@ from .environment import (
     dependency_inputs,
     file_hash,
     image_identity,
+    query,
 )
 from .evidence import experiment_spec, normalize
 from .provenance import capture, extract_source
-from .records import RunError, RunRecord
+from .records import Controls, RunError, RunRecord
 
 BASE_IMAGE = "python:3.12-slim"
 
@@ -204,7 +205,27 @@ def run(
     includes: list[Path],
     outputs: list[Path],
     experiment: Path | None = None,
+    timeout: float | None = None,
+    *,
+    _identifier: str | None = None,
+    _token: str | None = None,
 ) -> int:
+    from .supervision import Request, identity, supervise
+
+    if timeout is not None and _identifier is None:
+        return supervise(
+            Request(
+                root=str(root.resolve()),
+                script=str(script),
+                arguments=arguments,
+                includes=[str(path) for path in includes],
+                outputs=[str(path) for path in outputs],
+                experiment=str(experiment.resolve()) if experiment is not None else None,
+                timeout=timeout,
+                identifier=str(uuid4()),
+                token=str(uuid4()),
+            )
+        )
     if not (root / ".mlef" / "runs").is_dir():
         raise ValueError("Project is not initialized; run mlef init first.")
     relative_path(root, script)
@@ -214,7 +235,7 @@ def run(
         relative_path(root, output)
     files = source_files(root, script, includes)
     specification = experiment_spec(root, experiment) if experiment is not None else None
-    run_id = str(uuid4())
+    run_id = _identifier if _identifier is not None else str(uuid4())
     run_dir = root / ".mlef" / "runs" / run_id
     artifacts = run_dir / "artifacts"
     artifacts.mkdir(parents=True)
@@ -230,6 +251,12 @@ def run(
         warnings=warnings,
         outputs=[path.as_posix() for path in outputs],
         experiment=specification,
+        runtime=identity(root, run_id, _token if _token is not None else str(uuid4())),
+        controls=Controls(
+            requested={"timeout_seconds": timeout},
+            applied={"supervised_deadline": timeout is not None},
+        ),
+        stage="source_selection",
     )
     warnings = metadata.warnings
     save(run_dir / "run.json", metadata)
@@ -243,7 +270,13 @@ def run(
     environment = Environment()
     save(run_dir / "environment.json", environment.model_dump())
     with (run_dir / "runner.log").open("ab") as log:
+
+        def stage(value: str) -> None:
+            metadata.stage = value
+            save(run_dir / "run.json", metadata)
+
         try:
+            stage("source_capture")
             git_provenance, inputs = capture(root, run_dir, files)
             metadata.git, metadata.inputs = git_provenance, inputs
             inputs.outputs = metadata.outputs
@@ -253,6 +286,7 @@ def run(
                 workspace = context / "workspace"
                 workspace.mkdir()
                 extract_source(run_dir / "source.tar.gz", workspace)
+                stage("dependencies")
                 dependencies = dependency_inputs(workspace)
                 environment.dependencies = dependencies
                 inputs.dependency_hashes = dependencies.hashes
@@ -263,6 +297,7 @@ def run(
                         "Docker executable not found. Install Docker and start its engine."
                     )
                 docker(["info"], log)
+                stage("image_pull")
                 docker(["pull", BASE_IMAGE], log)
                 environment.base_image = image_identity(BASE_IMAGE, log)
                 save(run_dir / "environment.json", environment.model_dump())
@@ -286,10 +321,23 @@ def run(
                 shutil.copy2(context / "Dockerfile", run_dir / "Dockerfile")
                 inputs.build_recipe_sha256 = file_hash(run_dir / "Dockerfile")
                 save(run_dir / "run.json", metadata)
+                stage("image_build")
                 docker(["build", "--tag", image, str(context)], log)
             environment.execution_image = image_identity(image, log)
             save(run_dir / "environment.json", environment.model_dump())
-            environment.container = container_info(environment.execution_image.id, log, user)
+            stage("environment_probe")
+            runtime = metadata.runtime
+            assert runtime is not None
+            if timeout is not None:
+                environment.container = container_info(
+                    environment.execution_image.id,
+                    log,
+                    user,
+                    name=runtime.probe_name,
+                    labels={"mlef.owner": runtime.token, "mlef.project": runtime.project},
+                )
+            else:
+                environment.container = container_info(environment.execution_image.id, log, user)
             environment.warnings = []
             warnings.clear()
             save(run_dir / "environment.json", environment.model_dump())
@@ -309,8 +357,19 @@ def run(
             ]
             if user is not None:
                 create.extend(["--user", user])
+            create.extend(
+                [
+                    "--label",
+                    f"mlef.owner={runtime.token}",
+                    "--label",
+                    f"mlef.project={runtime.project}",
+                ]
+            )
+            stage("container_create")
             docker([*create, environment.execution_image.id, *command], log)
             created = True
+            runtime.container_id = query(["inspect", "--format", "{{.Id}}", name], log).strip()
+            stage("execution")
             # Do not allocate a TTY: Docker then preserves separate stdout/stderr streams.
             # Handle Ctrl+C in mlef; do not also deliver it to the attached Docker client.
             process = subprocess.Popen(
@@ -366,6 +425,7 @@ def run(
             log.write((str(error) + "\n").encode("utf-8"))
             print(f"mlef: {error}", file=sys.stderr)
         finally:
+            stage("collection")
             if process is not None and process.poll() is None:
                 docker(["stop", "--time", "5", name], log, check=False)
                 try:

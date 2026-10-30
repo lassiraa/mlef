@@ -195,8 +195,19 @@ print(json.dumps(dict(os=platform.platform(), architecture=platform.machine(),
 """
 
 
-def container_info(image: str, log: BinaryIO, user: str | None = None) -> ContainerInfo:
+def container_info(
+    image: str,
+    log: BinaryIO,
+    user: str | None = None,
+    *,
+    name: str | None = None,
+    labels: dict[str, str] | None = None,
+) -> ContainerInfo:
     arguments = ["run", "--rm", "--network", "none"]
+    if name is not None:
+        arguments += ["--name", name]
+    for key, value in (labels or {}).items():
+        arguments += ["--label", f"{key}={value}"]
     if user is not None:
         arguments += ["--user", user]
     arguments += ["--entrypoint", "python", image, "-I", "-c", PROBE]

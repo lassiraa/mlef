@@ -90,8 +90,21 @@ class RunError(Contract):
     message: str
 
 
+class Controls(Contract):
+    requested: dict[str, JsonValue] = Field(default_factory=dict)
+    applied: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class Runtime(Contract):
+    token: str
+    project: str
+    container_name: str
+    probe_name: str
+    container_id: str | None = None
+
+
 class RunRecord(Contract):
-    schema_version: Literal[2] = 2
+    schema_version: Literal[3] = 3
     id: str
     state: Literal["preparing", "running", "succeeded", "failed", "cancelled"]
     created_at: str
@@ -106,6 +119,9 @@ class RunRecord(Contract):
     git: GitProvenance | None = None
     inputs: SourceInputs | None = None
     experiment: Experiment | None = None
+    controls: Controls | None = None
+    runtime: Runtime | None = None
+    stage: str | None = None
 
     @field_validator("id")
     @classmethod
@@ -125,15 +141,18 @@ def read_run(path: Path) -> RunRecord:
     if not isinstance(data, dict):
         raise ValueError("Run metadata must be a JSON object.")
     version = data.get("schema_version")
-    if type(version) is not int or version not in (1, 2):
+    if type(version) is not int or version not in (1, 2, 3):
         raise ValueError(f"Unsupported run schema version: {version!r}")
-    if version == 1:
+    if version in (1, 2):
         data = dict(data)
-        data["schema_version"] = 2
+        data["schema_version"] = 3
         warnings = data.get("warnings", [])
         if not isinstance(warnings, list):
             raise ValueError("Invalid legacy warnings.")
-        data["warnings"] = [*warnings, "Legacy version-1 record; unavailable evidence is unknown."]
+        data["warnings"] = [
+            *warnings,
+            f"Legacy version-{version} record; absent controls/evidence are unknown.",
+        ]
     record = RunRecord.model_validate(data)
     if record.state in {"succeeded", "failed", "cancelled"} and record.finished_at is None:
         raise ValueError("A terminal run must have a finish timestamp.")

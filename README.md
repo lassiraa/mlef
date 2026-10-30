@@ -31,6 +31,16 @@ the run without overwriting existing artifacts.
 Use Ctrl+C to cancel; mlef gives the container five seconds to stop before
 forcing termination and collecting available outputs.
 
+`mlef run train.py --timeout 60` places one wall-clock deadline around the entire
+worker, including source preparation, image pulls/builds, environment probes and
+execution. On expiry, mlef kills the owned worker process tree and attempts
+ownership-checked container/output cleanup within a further 15-second grace budget
+(process-tree termination may take up to ten additional seconds). Available outputs
+remain retrievable; interrupted evidence is marked unavailable. Engine failures
+are recorded as incomplete cleanup rather than claimed successful cleanup. The
+deadline does not quota artifact writes or cancel arbitrary remote engine work.
+Omitting the option preserves the existing foreground behavior and stage timeouts.
+
 The runner archives tracked files and the explicitly named script into
 `source.tar.gz`, then builds from that saved archive. Include other untracked
 source with `--include path`. Each run saves the archive SHA-256, included
@@ -39,7 +49,7 @@ relative to HEAD (the empty tree for an unborn repository), and the generated
 `Dockerfile`. Detached HEAD records a null branch. The archive defines the actual
 source inputs; the patch contains tracked changes only.
 Root dependency manifests and locks are included even when untracked.
-New runs write version-2 Pydantic metadata. Inspection reads pre-release version-1
+New runs write version-3 Pydantic metadata. Inspection reads pre-release version-1/version-2
 records without rewriting them and marks unavailable evidence as unknown.
 It resolves `python:3.12-slim` to an immutable digest and executes from `/workspace`; your working tree
 is never mounted into the experiment. Run storage and credential files are
@@ -161,7 +171,7 @@ against Python 3.11 across platforms, with all diagnostics treated as errors.
 Both checks run in CI. Keep any necessary suppressions specific and explain them.
 
 Versioned JSON Schemas are in [schemas](schemas). The core contracts are
-[run v2](schemas/run-v2.schema.json), [experiment v1](schemas/experiment-v1.schema.json),
+[run v3](schemas/run-v3.schema.json), [experiment v1](schemas/experiment-v1.schema.json),
 [result v1](schemas/result-v1.schema.json), [environment v1](schemas/environment-v1.schema.json),
 and [comparison v1](schemas/comparison-v1.schema.json). Regenerate them with
 `uv run --locked --extra dev python scripts/export_schemas.py`; CI checks that the
