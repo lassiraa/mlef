@@ -8,6 +8,7 @@ import sys
 import tarfile
 import tempfile
 import threading
+from contextlib import suppress
 from datetime import UTC, datetime
 from io import BufferedReader
 from pathlib import Path
@@ -28,6 +29,8 @@ from .environment import (
 )
 from .evidence import experiment_spec, normalize
 from .limits import Limits, memory_bytes
+from .processes import BoundedLog, Budget, LogLimitError
+from .processes import command as run_command
 from .provenance import capture, extract_source
 from .records import Controls, RunError, RunRecord
 
@@ -130,11 +133,9 @@ def docker(
     arguments: list[str], log: BinaryIO, *, check: bool = True
 ) -> subprocess.CompletedProcess[bytes]:
     try:
-        result = subprocess.run(
+        result = run_command(
             ["docker", *arguments],
-            stdout=log,
-            stderr=subprocess.STDOUT,
-            check=False,
+            log if check else None,
             timeout=600 if arguments[0] == "build" else 30,
         )
     except (OSError, subprocess.SubprocessError) as error:
@@ -151,14 +152,20 @@ def docker(
 
 
 def stream_process(
-    process: subprocess.Popen[bytes], run_dir: Path, name: str, log: BinaryIO
+    process: subprocess.Popen[bytes],
+    run_dir: Path,
+    name: str,
+    log: BinaryIO,
+    budget: Budget | None = None,
 ) -> int:
-    errors: list[OSError] = []
+    errors: list[OSError | LogLimitError] = []
+    budget = budget if budget is not None else Budget(None)
 
     def copy(source: BufferedReader, path: Path, terminal: TextIO) -> None:
         try:
             with path.open("wb") as destination:
                 while chunk := source.read1(65536):
+                    chunk = budget.take(chunk)
                     destination.write(chunk)
                     destination.flush()
                     try:
@@ -170,7 +177,9 @@ def stream_process(
                             terminal.flush()
                     except (OSError, ValueError):
                         pass  # Saved logs remain available if a terminal consumer disconnects.
-        except OSError as error:
+                    if budget.exceeded.is_set():
+                        raise LogLimitError("Combined stdout/stderr byte budget exceeded.")
+        except (OSError, LogLimitError) as error:
             errors.append(error)
         finally:
             source.close()
@@ -182,7 +191,14 @@ def stream_process(
     for thread in threads:
         thread.start()
     try:
-        return_code = process.wait()
+        while True:
+            if errors:
+                raise errors[0]
+            try:
+                return_code = process.wait(timeout=0.05)
+                break
+            except subprocess.TimeoutExpired:
+                pass
     except BaseException:
         docker(["stop", "--time", "5", name], log, check=False)
         try:
@@ -195,7 +211,7 @@ def stream_process(
         for thread in threads:
             thread.join()
     if errors:
-        raise OSError(f"Cannot save experiment logs: {errors[0]}")
+        raise errors[0]
     return return_code
 
 
@@ -210,6 +226,8 @@ def run(
     cpus: float | None = None,
     memory: str | int | None = None,
     network: str = "default",
+    max_log_bytes: int | None = None,
+    max_runner_log_bytes: int | None = None,
     *,
     _identifier: str | None = None,
     _token: str | None = None,
@@ -223,7 +241,11 @@ def run(
             "network": network,
         }
     )
-    if timeout is not None and _identifier is None:
+    script_budget = Budget(max_log_bytes)
+    Budget(max_runner_log_bytes)
+    if _identifier is None and any(
+        value is not None for value in [timeout, max_log_bytes, max_runner_log_bytes]
+    ):
         return supervise(
             Request(
                 root=str(root.resolve()),
@@ -236,6 +258,8 @@ def run(
                 identifier=str(uuid4()),
                 token=str(uuid4()),
                 limits=limits,
+                max_log_bytes=max_log_bytes,
+                max_runner_log_bytes=max_runner_log_bytes,
             )
         )
     if not (root / ".mlef" / "runs").is_dir():
@@ -265,8 +289,17 @@ def run(
         experiment=specification,
         runtime=identity(root, run_id, _token if _token is not None else str(uuid4())),
         controls=Controls(
-            requested={"timeout_seconds": timeout, **limits.model_dump(mode="json")},
-            applied={"supervised_deadline": timeout is not None},
+            requested={
+                "timeout_seconds": timeout,
+                **limits.model_dump(mode="json"),
+                "max_log_bytes": max_log_bytes,
+                "max_runner_log_bytes": max_runner_log_bytes,
+            },
+            applied={
+                "supervised_deadline": timeout is not None,
+                "script_log_budget": max_log_bytes is not None,
+                "runner_log_budget": max_runner_log_bytes is not None,
+            },
         ),
         stage="source_selection",
     )
@@ -281,7 +314,7 @@ def run(
     result = 1
     environment = Environment()
     save(run_dir / "environment.json", environment.model_dump())
-    with (run_dir / "runner.log").open("ab") as log:
+    with BoundedLog(str(run_dir / "runner.log"), max_runner_log_bytes) as log:
 
         def stage(value: str) -> None:
             metadata.stage = value
@@ -405,7 +438,10 @@ def run(
             )
             metadata.state, metadata.started_at = "running", now()
             save(run_dir / "run.json", metadata)
-            attach_exit_code = stream_process(process, run_dir, name, log)
+            if max_log_bytes is None:
+                attach_exit_code = stream_process(process, run_dir, name, log)
+            else:
+                attach_exit_code = stream_process(process, run_dir, name, log, budget=script_budget)
             inspection = subprocess.run(
                 ["docker", "inspect", "--format", "{{json .State}}", name],
                 capture_output=True,
@@ -451,9 +487,15 @@ def run(
         ) as error:
             if metadata.error is None:
                 metadata.error = RunError(
-                    category="preparation" if process is None else "execution", message=str(error)
+                    category="output_limit"
+                    if isinstance(error, LogLimitError)
+                    else "preparation"
+                    if process is None
+                    else "execution",
+                    message=str(error),
                 )
-            log.write((str(error) + "\n").encode("utf-8"))
+            with suppress(LogLimitError):
+                log.write((str(error) + "\n").encode("utf-8"))
             print(f"mlef: {error}", file=sys.stderr)
         finally:
             stage("collection")

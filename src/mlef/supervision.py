@@ -26,10 +26,12 @@ class Request(Contract):
     includes: list[str]
     outputs: list[str]
     experiment: str | None
-    timeout: float = Field(gt=0)
+    timeout: float | None = Field(default=None, gt=0)
     identifier: str
     token: str
     limits: Limits = Field(default_factory=Limits)
+    max_log_bytes: int | None = Field(default=None, gt=0)
+    max_runner_log_bytes: int | None = Field(default=None, gt=0)
 
 
 def identity(root: Path, identifier: str, token: str) -> Runtime:
@@ -141,7 +143,16 @@ def supervise(request: Request) -> int:
     cancelled = False
     try:
         try:
-            return process.wait(timeout=max(0, request.timeout - (time.monotonic() - began)))
+            remaining = (
+                max(0, request.timeout - (time.monotonic() - began))
+                if request.timeout is not None
+                else None
+            )
+            result = process.wait(timeout=remaining)
+            if hasattr(os, "killpg") and hasattr(signal, "SIGKILL"):
+                with suppress(ProcessLookupError):
+                    os.killpg(process.pid, signal.SIGKILL)
+            return result
         except subprocess.TimeoutExpired:
             pass
         except KeyboardInterrupt:
@@ -216,6 +227,8 @@ def main() -> None:
             cpus=request.limits.cpus,
             memory=request.limits.memory_bytes,
             network=request.limits.network,
+            max_log_bytes=request.max_log_bytes,
+            max_runner_log_bytes=request.max_runner_log_bytes,
         )
     except (ValueError, OSError) as error:
         print(f"mlef: {error}", file=sys.stderr)

@@ -3,7 +3,6 @@
 import hashlib
 import json
 import platform
-import subprocess
 import tomllib
 from pathlib import Path
 from typing import BinaryIO, Literal
@@ -11,6 +10,7 @@ from typing import BinaryIO, Literal
 from pydantic import BaseModel, Field
 
 from . import __version__
+from .processes import command
 
 UV_IMAGE = "ghcr.io/astral-sh/uv:0.13.6"
 INSTALL_COMMAND = [
@@ -158,16 +158,12 @@ class Environment(BaseModel):
 
 
 def query(arguments: list[str], log: BinaryIO) -> str:
-    result = subprocess.run(
-        ["docker", *arguments], capture_output=True, text=True, check=False, timeout=60
-    )
-    log.write(result.stderr.encode("utf-8"))
-    log.flush()
+    result = command(["docker", *arguments], log, capture=True, timeout=60)
     if result.returncode:
         raise RuntimeError(
             f"docker {arguments[0]} failed during environment capture; see runner.log."
         )
-    return result.stdout
+    return result.stdout.decode("utf-8")
 
 
 def image_identity(image: str, log: BinaryIO) -> ImageIdentity:

@@ -50,6 +50,15 @@ memory controls and always uses isolated networking. Runtime controls do not
 constrain build workers or make image/dependency downloads offline. Docker-confirmed
 OOM termination is recorded separately from a script's explicit exit code 137.
 
+`--max-log-bytes 1000000` bounds combined saved and forwarded script stdout/stderr;
+`--max-runner-log-bytes 1000000` bounds preparation/build diagnostics in runner.log.
+Limits count bytes, including multibyte text, and stop the run on exhaustion with
+an `output_limit` diagnostic. Native command pipes are drained through the limiter;
+they never write directly to the saved log descriptor. Cleanup output is discarded
+when necessary and its outcome is retained in metadata. Structured Docker replies
+have a separate 4 MiB capture ceiling. These limits do not quota artifacts or total
+disk use; combine them with a deadline for a total worker time budget.
+
 The runner archives tracked files and the explicitly named script into
 `source.tar.gz`, then builds from that saved archive. Include other untracked
 source with `--include path`. Each run saves the archive SHA-256, included
