@@ -1,6 +1,7 @@
 """Shared Git-root and initialization behavior without terminal rendering."""
 
 import subprocess
+from importlib.resources import files
 from pathlib import Path
 
 
@@ -24,10 +25,23 @@ def project_root(root: Path | str | None = None) -> Path:
     return resolved
 
 
-def initialize(root: Path) -> None:
+def initialize(root: Path, *, scaffold: bool = True) -> None:
     (root / ".mlef/runs").mkdir(parents=True, exist_ok=True)
     ignore = root / ".gitignore"
     content = ignore.read_text(encoding="utf-8") if ignore.exists() else ""
     if "/.mlef/" not in content.splitlines() and ".mlef/" not in content.splitlines():
         with ignore.open("a", encoding="utf-8", newline="\n") as stream:
             stream.write(("\n" if content and not content.endswith("\n") else "") + "/.mlef/\n")
+    if not scaffold:
+        return
+    definition = root / "mlef.toml"
+    steps = root / "steps"
+    if any(path.exists() or path.is_symlink() for path in (definition, steps)):
+        return
+    templates = files("mlef").joinpath("templates")
+    steps.mkdir()
+    for name in ("ingest", "split", "train", "evaluate"):
+        with (steps / f"{name}.py").open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write(templates.joinpath(f"{name}.py.txt").read_text(encoding="utf-8"))
+    with definition.open("x", encoding="utf-8", newline="\n") as stream:
+        stream.write(templates.joinpath("mlef.toml").read_text(encoding="utf-8"))

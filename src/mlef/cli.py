@@ -20,8 +20,8 @@ from .tabular_comparison import compare_tabular
 from .tabular_diagnostics import diagnose, read_profile
 
 
-def init(root: Path) -> None:
-    initialize(root)
+def init(root: Path, *, scaffold: bool = True) -> None:
+    initialize(root, scaffold=scaffold)
     print(f"Initialized mlef storage: {root / '.mlef'}")
 
 
@@ -50,7 +50,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = Parser(prog="mlef", description="Run Python experiments in Docker.")
     parser.add_argument("--version", action="version", version=f"mlef {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("init", help="Initialize local run storage in a Git project.")
+    initialization = commands.add_parser("init", help="Initialize storage and a script pipeline.")
+    initialization.add_argument(
+        "--storage-only", action="store_true", help="Do not create the example pipeline."
+    )
     validation = commands.add_parser("validate", help="Validate pipeline wiring without execution.")
     validation.add_argument("definition", nargs="?", type=Path, default=Path("mlef.toml"))
     validation.add_argument("--json", action="store_true")
@@ -147,7 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 0
         if args.command == "init":
-            init(root)
+            init(root, scaffold=not args.storage_only)
             return 0
         if args.command == "list":
             records, diagnostics = list_runs(root)

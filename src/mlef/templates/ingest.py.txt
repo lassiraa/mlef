@@ -1,0 +1,29 @@
+"""Create toy observations; pass a fresh shared directory to each example script."""
+
+import argparse
+import json
+from pathlib import Path
+
+from mlef import Artifact, ArtifactType, Output, Step
+
+step = Step(
+    name="ingest",
+    outputs=[Output(name="data", type=ArtifactType.FILE, format="application/json")],
+)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("directory", type=Path)
+    args = parser.parse_args()
+    with step.local(args.directory / "ingest") as context:
+        path = context.output_path("data", "data.json")
+        path.write_text(json.dumps([1, 2, 3, 4, 5, 6]), encoding="utf-8")
+        step.save(
+            [Artifact(name="data", type=ArtifactType.FILE, format="application/json", path=path)],
+            context=context,
+        )
+
+
+if __name__ == "__main__":
+    main()

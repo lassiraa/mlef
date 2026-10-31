@@ -1,0 +1,20 @@
+schema_version = 1
+
+[[steps]]
+name = "ingest"
+script = "steps/ingest.py"
+
+[[steps]]
+name = "split"
+script = "steps/split.py"
+bindings = { data = "ingest.data" }
+
+[[steps]]
+name = "train"
+script = "steps/train.py"
+bindings = { partitions = "split.partitions" }
+
+[[steps]]
+name = "evaluate"
+script = "steps/evaluate.py"
+bindings = { partitions = "split.partitions", model = "train.model" }

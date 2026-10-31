@@ -1,0 +1,60 @@
+"""Evaluate the constant prediction on the separate test observations."""
+
+import argparse
+import json
+from pathlib import Path
+from statistics import mean
+
+from mlef import Artifact, ArtifactType, Input, Metrics, Output, Scalar, Step, load_artifacts
+
+step = Step(
+    name="evaluate",
+    inputs=[
+        Input(name="partitions", type=ArtifactType.DIRECTORY, format="application/json"),
+        Input(name="model", type=ArtifactType.FILE, format="application/json"),
+    ],
+    outputs=[Output(name="metrics", type=ArtifactType.METRICS, format="application/json")],
+)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("directory", type=Path)
+    args = parser.parse_args()
+    inputs = {
+        **load_artifacts(args.directory / "split"),
+        **load_artifacts(args.directory / "train"),
+    }
+    with step.local(args.directory / "evaluate", inputs=inputs) as context:
+        values = json.loads(
+            context.input_path("partitions", "test.json").read_text(encoding="utf-8")
+        )
+        model = json.loads(context.input_path("model", "model.json").read_text(encoding="utf-8"))
+        metrics = Metrics(
+            scope="test",
+            model=context.input_reference("model"),
+            values={
+                "mae": Scalar(
+                    value=mean(abs(value - model["prediction"]) for value in values),
+                    definition="Mean absolute error of the constant training-mean prediction.",
+                    direction="minimize",
+                    aggregation="mean",
+                    sample_count=len(values),
+                )
+            },
+        )
+        path = context.output_path("metrics", "metrics.json")
+        path.write_text(metrics.model_dump_json(indent=2), encoding="utf-8")
+        step.save(
+            [
+                Artifact(
+                    name="metrics", type=ArtifactType.METRICS, format="application/json", path=path
+                )
+            ],
+            context=context,
+        )
+        print(metrics.model_dump_json(indent=2))
+
+
+if __name__ == "__main__":
+    main()

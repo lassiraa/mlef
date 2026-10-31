@@ -93,8 +93,8 @@ def validate(
 
 
 @_translated
-def init(*, root: Path | str | None = None) -> None:
-    initialize(project_root(root))
+def init(*, root: Path | str | None = None, scaffold: bool = True) -> None:
+    initialize(project_root(root), scaffold=scaffold)
 
 
 def _status(root: Path, identifier: str) -> RunStatus:

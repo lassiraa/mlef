@@ -34,6 +34,13 @@ The script writes illustrative metrics and a dummy model. For real training, use
 the tabular example below. See [setup](docs/setup.rst) for installation in your
 own project, Python API environments, dependencies and platform support.
 
+In a fresh project, `mlef init` also creates `mlef.toml` and four `steps/` scripts
+demonstrating typed artifact handoffs. Existing scaffold paths are left untouched;
+`mlef init --storage-only` omits the example. See the
+[pipeline guide](docs/pipelines.rst) to validate and run these scripts locally.
+Captured Docker pipeline execution is not yet available; `mlef run script.py`
+continues to run individual scripts as before.
+
 ## What makes it useful?
 
 ### Keep results when an experiment fails

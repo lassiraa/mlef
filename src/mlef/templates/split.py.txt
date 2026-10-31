@@ -1,0 +1,40 @@
+"""Save training and test observations as a verified directory artifact."""
+
+import argparse
+import json
+from pathlib import Path
+
+from mlef import Artifact, ArtifactType, Input, Output, Step, load_artifacts
+
+step = Step(
+    name="split",
+    inputs=[Input(name="data", type=ArtifactType.FILE, format="application/json")],
+    outputs=[Output(name="partitions", type=ArtifactType.DIRECTORY, format="application/json")],
+)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("directory", type=Path)
+    args = parser.parse_args()
+    inputs = load_artifacts(args.directory / "ingest")
+    with step.local(args.directory / "split", inputs=inputs) as context:
+        values = json.loads(context.input_path("data", "data.json").read_text(encoding="utf-8"))
+        path = context.output_path("partitions")
+        (path / "train.json").write_text(json.dumps(values[:4]), encoding="utf-8")
+        (path / "test.json").write_text(json.dumps(values[4:]), encoding="utf-8")
+        step.save(
+            [
+                Artifact(
+                    name="partitions",
+                    type=ArtifactType.DIRECTORY,
+                    format="application/json",
+                    path=path,
+                )
+            ],
+            context=context,
+        )
+
+
+if __name__ == "__main__":
+    main()

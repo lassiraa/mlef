@@ -13,6 +13,7 @@ for argument help.
 .. code-block:: text
 
     mlef init
+    mlef init --storage-only
     mlef run train.py --include data.csv --output results -- --seed 7
     mlef list --json
     mlef status RUN --json
@@ -23,6 +24,10 @@ for argument help.
     mlef tabular compare BASELINE CANDIDATE --limit 20 --json
     mlef tabular profile RUN --json
     mlef tabular diagnose BASELINE CANDIDATE --minimum-count 20 --limit 20 --json
+
+``init`` also creates a :doc:`four-step example <pipelines>` when neither
+``mlef.toml`` nor ``steps`` exists. Existing scaffold locations are left untouched.
+``--storage-only`` creates only storage and its ignore entry.
 
 Outputs, cancellation and limits
 --------------------------------

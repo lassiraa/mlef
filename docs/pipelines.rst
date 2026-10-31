@@ -8,6 +8,48 @@ storage. Existing ``mlef run script.py`` and historical run readers are unchange
 Pipeline execution is not yet implemented. Scripts can already save typed outputs
 and bind verified local inputs using the explicit SDK in :doc:`script-artifacts`.
 
+Start with a script pipeline
+----------------------------
+
+``mlef init`` initializes storage and, when neither ``mlef.toml`` nor ``steps``
+exists, writes a four-step example: ingest observations, split training/test
+observations, train a constant predictor, and evaluate mean absolute error.
+It uses only the standard library and the MLEF SDK, not an ML framework.
+The data, partitions and model are generic JSON file/directory artifacts;
+evaluation writes a structured ``Metrics`` payload with an exact model reference.
+These toy artifacts do not claim the specialized dataset/split/model contracts.
+
+Existing files, directories and symbolic links at either scaffold location cause
+the *entire* example to be skipped; initialization still prepares storage and the
+ignore entry. Repeating initialization never overwrites edits or recreates deleted
+example files. Use ``mlef init --storage-only`` or ``api.init(scaffold=False)`` to
+initialize storage without creating any example files.
+
+From a fresh project's Git root, with MLEF installed in the active Python
+environment, validate the wiring and run the trusted scripts locally in order:
+
+.. code-block:: text
+
+    mlef init
+    mlef validate --json
+    python steps/ingest.py .mlef/example
+    python steps/split.py .mlef/example
+    python steps/train.py .mlef/example
+    python steps/evaluate.py .mlef/example
+
+Every command takes the same parent directory. Each script creates its own new
+attempt, reads verified read-only copies of upstream outputs, and publishes only
+on a clean context exit. The example reports MAE 3 on two test observations for a
+prediction of 2.5 learned from four training observations. Missing or corrupt
+upstream outputs fail rather than silently rerunning ingestion.
+
+For another execution, pass a different fresh parent directory to all four
+commands. Existing attempt directories are never overwritten. These local SDK
+attempts are **not** captured Docker runs and do not appear in ``mlef list``;
+inspect them with ``read_step(Path(".mlef/example/evaluate"))``. Captured pipeline
+execution is separate from this local demonstration. Existing
+``mlef run script.py`` behavior remains unchanged.
+
 Script declarations
 -------------------
 

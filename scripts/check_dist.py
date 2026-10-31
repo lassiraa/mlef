@@ -40,6 +40,9 @@ def check(distribution: Path, temporary: Path) -> None:
     project.mkdir()
     subprocess.run(["git", "init", "--quiet", str(project)], check=True)
     subprocess.run([str(executable), "init"], cwd=project, check=True)
+    subprocess.run([str(executable), "validate", "--json"], cwd=project, check=True)
+    for name in ("ingest", "split", "train", "evaluate"):
+        subprocess.run([str(python), f"steps/{name}.py", ".mlef/example"], cwd=project, check=True)
     result = subprocess.run(
         [str(executable), "list", "--json"], cwd=project, capture_output=True, text=True, check=True
     )
