@@ -63,6 +63,8 @@ def check(distribution: Path, temporary: Path) -> None:
             "assert callable(api.tabular_profile); assert callable(api.tabular_diagnostics); "
             "assert callable(api.export_tabular_artifacts); "
             "assert callable(tabular.read_artifacts); "
+            "assert callable(api.publish_run); assert callable(api.fetch_run); "
+            "assert 'boto3' not in sys.modules; "
             "api.init(); assert api.list_runs().runs == []; "
             "assert api.RunOptions(timeout_seconds=1).timeout_seconds == 1; "
             "\ntry: api.status(str(uuid4()))"

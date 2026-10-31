@@ -69,6 +69,31 @@ def test_explicit_reuse_runs_edited_training_and_is_self_contained(project: Path
         execute_pipeline(project, fork)
 
 
+def test_fetched_run_supports_verified_reuse_from_a_clean_workspace(
+    project: Path, tmp_path: Path
+) -> None:
+    setup(project)
+    original = prepare(project)
+    assert execute_pipeline(project, original) == 0
+    finish_parent(original)
+    previous = read_pipeline(original)
+    remote = str(tmp_path / "store")
+    published = api.publish_run(previous.run_id, remote, root=project)
+    original.parents[1].rename(original.parents[1].with_name("removed-source"))
+    fresh = tmp_path / "fresh"
+    fresh.mkdir()
+    subprocess.run(["git", "init", "--quiet", str(fresh)], check=True)
+    setup(fresh)
+    assert api.fetch_run(previous.run_id, remote, root=fresh) == published
+    assert api.pipeline_status(previous.run_id, root=fresh, verify=True) == previous
+    fork = prepare(fresh)
+    reused = reuse_steps(fresh, previous.run_id, fork, "train")
+    assert reused.attempts["ingest"].reused_from == previous.run_id
+    assert execute_pipeline(fresh, fork) == 0
+    finish_parent(fork)
+    assert api.pipeline_status(reused.run_id, root=fresh, verify=True).state == "complete"
+
+
 @pytest.mark.parametrize("change", ["bytes", "script", "contract", "sdk", "archive", "binding"])
 def test_reuse_rejects_corruption_and_incompatibility(project: Path, change: str) -> None:
     setup(project)

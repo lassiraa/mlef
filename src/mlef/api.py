@@ -26,6 +26,7 @@ from .tabular_comparison import TabularComparison
 from .tabular_comparison import compare_tabular as _compare_tabular
 from .tabular_diagnostics import Diagnostics, diagnose, read_profile
 from .tabular_runtime import Profile
+from .transfers import RunTransfer, backend, fetch, publish
 
 __all__ = [
     "LogEvent",
@@ -37,10 +38,12 @@ __all__ = [
     "compare",
     "compare_tabular",
     "export_tabular_artifacts",
+    "fetch_run",
     "get",
     "init",
     "list_runs",
     "pipeline_status",
+    "publish_run",
     "recover",
     "run",
     "status",
@@ -89,6 +92,18 @@ class RunStatus(RunRecord):
 class RunListing(Contract):
     runs: list[RunRecord]
     diagnostics: list[str]
+
+
+@_translated
+def publish_run(
+    identifier: str, destination: str, *, root: Path | str | None = None
+) -> RunTransfer:
+    return publish(project_root(root), identifier, backend(destination))
+
+
+@_translated
+def fetch_run(identifier: str, source: str, *, root: Path | str | None = None) -> RunTransfer:
+    return fetch(project_root(root), identifier, backend(source))
 
 
 @_translated

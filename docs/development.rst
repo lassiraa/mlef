@@ -19,6 +19,10 @@ cancellation, declared outputs, concurrent-run isolation, locked installation,
 saved-recipe rebuild, malformed optional metrics, required-result storage failure,
 and the complete tabular run/inspect/compare/retrieve loop.
 
+The dev extra includes Moto for S3 API emulation without cloud credentials.
+Live S3 checks are opt-in via ``MLEF_TEST_S3_URI``; see :doc:`storage` for their
+dedicated-prefix and manual cleanup requirements.
+
 Ruff enforces formatting, imports, annotations (including tests), bug-risk checks,
 pytest conventions, and simplification rules. ty checks source, tests, and examples
 against Python 3.11 across platforms, with all diagnostics treated as errors.

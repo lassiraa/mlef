@@ -54,6 +54,11 @@ def main(argv: list[str] | None = None) -> int:
     initialization.add_argument(
         "--storage-only", action="store_true", help="Do not create the example pipeline."
     )
+    for name, flag in [("publish", "--to"), ("fetch", "--from")]:
+        transfer = commands.add_parser(name, help="Transfer a run through a local or S3 store.")
+        transfer.add_argument("run_id")
+        transfer.add_argument(flag, dest="store", required=True)
+        transfer.add_argument("--json", action="store_true")
     validation = commands.add_parser("validate", help="Validate pipeline wiring without execution.")
     validation.add_argument("definition", nargs="?", type=Path, default=Path("mlef.toml"))
     validation.add_argument("--json", action="store_true")
@@ -118,6 +123,13 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Only mlef run accepts script arguments after --.")
     try:
         root = project_root()
+        if args.command in {"publish", "fetch"}:
+            from .transfers import backend, fetch, publish
+
+            action = publish if args.command == "publish" else fetch
+            result = action(root, args.run_id, backend(args.store))
+            print(result.model_dump_json() if args.json else f"{args.command}: {result.run_id}")
+            return 0
         if args.command == "validate":
             report = validate(root, args.definition)
             if args.json:
