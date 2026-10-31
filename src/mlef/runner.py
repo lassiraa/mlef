@@ -457,6 +457,13 @@ def run(
                             inputs.source_sha256,
                             environment.sdk_wheel,
                         )
+                        from .external_inputs import stage as stage_external_inputs
+
+                        stage_external_inputs(
+                            root,
+                            artifacts / "pipeline",
+                            resume_from=reuse_from if resume else None,
+                        )
                         if set(force) - set(prepared.order):
                             raise ValueError("Forced steps must name known pipeline steps.")
                         if reuse_from is not None:

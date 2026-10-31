@@ -7,8 +7,16 @@ from pathlib import Path
 
 from .artifacts import safe_path
 from .environment import Environment
-from .execution import CacheDecision, PipelineRecord, StepFingerprint, _save, attempt_directory
+from .execution import (
+    CacheDecision,
+    PipelineRecord,
+    StepFingerprint,
+    _save,
+    attempt_directory,
+    imported_directory,
+)
 from .locking import run_lock
+from .pipeline import ExternalInput
 from .records import read_json, read_run
 from .reuse import copy_step, source_run, verify_source
 from .sdk import _checked, read_step
@@ -71,6 +79,16 @@ def fingerprint(directory: Path, record: PipelineRecord, name: str) -> StepFinge
     entry = next(entry for entry in record.definition.steps if entry.name == name)
     inputs = {}
     for binding, reference in entry.bindings.items():
+        if isinstance(reference, ExternalInput):
+            artifact = read_step(imported_directory(directory, reference)).artifacts[
+                reference.artifact.output
+            ]
+            if artifact.producer != reference.artifact:
+                raise ValueError(
+                    "Imported cache input does not match its exact producer reference."
+                )
+            inputs[binding] = artifact.content_sha256()
+            continue
         producer, output = reference.split(".")
         if record.attempts[producer].state != "complete":
             raise ValueError("Cache fingerprints require completed upstream inputs.")
@@ -125,6 +143,7 @@ def _decide(
         elif any(
             record.attempts[reference.split(".")[0]].state != "complete"
             for reference in entry.bindings.values()
+            if isinstance(reference, str)
         ):
             reasons.append("Upstream execution is required; inputs are not yet reusable.")
         else:

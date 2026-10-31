@@ -1,0 +1,154 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "An exact producer reference, never a mutable latest alias or storage URI.",
+      "properties": {
+        "output": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Output",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "step": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "step",
+        "output",
+        "sha256"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ExternalInput": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "artifact"
+      ],
+      "title": "ExternalInput",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "PipelineStep": {
+      "additionalProperties": false,
+      "properties": {
+        "bindings": {
+          "patternProperties": {
+            "^[A-Za-z][A-Za-z0-9_-]*$": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/ExternalInput"
+                }
+              ]
+            }
+          },
+          "title": "Bindings",
+          "type": "object"
+        },
+        "cache": {
+          "default": false,
+          "title": "Cache",
+          "type": "boolean"
+        },
+        "cache_version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cache Version"
+        },
+        "contract": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contract"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "script": {
+          "title": "Script",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "script"
+      ],
+      "title": "PipelineStep",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "default": 1,
+      "enum": [
+        1,
+        2
+      ],
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "steps": {
+      "items": {
+        "$ref": "#/$defs/PipelineStep"
+      },
+      "minItems": 1,
+      "title": "Steps",
+      "type": "array"
+    }
+  },
+  "required": [
+    "steps"
+  ],
+  "title": "PipelineDefinition",
+  "type": "object"
+}

@@ -1,5 +1,38 @@
 {
   "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "An exact producer reference, never a mutable latest alias or storage URI.",
+      "properties": {
+        "output": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Output",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "step": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "step",
+        "output",
+        "sha256"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
     "ArtifactType": {
       "enum": [
         "file",
@@ -102,6 +135,24 @@
       "title": "CustomType",
       "type": "object"
     },
+    "ExternalInput": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "artifact"
+      ],
+      "title": "ExternalInput",
+      "type": "object"
+    },
     "Input": {
       "additionalProperties": false,
       "properties": {
@@ -190,8 +241,11 @@
       "additionalProperties": false,
       "properties": {
         "schema_version": {
-          "const": 1,
           "default": 1,
+          "enum": [
+            1,
+            2
+          ],
           "title": "Schema Version",
           "type": "integer"
         },
@@ -216,7 +270,14 @@
         "bindings": {
           "patternProperties": {
             "^[A-Za-z][A-Za-z0-9_-]*$": {
-              "type": "string"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "$ref": "#/$defs/ExternalInput"
+                }
+              ]
             }
           },
           "title": "Bindings",

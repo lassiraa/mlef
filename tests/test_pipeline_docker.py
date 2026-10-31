@@ -30,6 +30,39 @@ def setup(project: Path) -> None:
         (project / name).write_bytes((LOCKED / name).read_bytes())
 
 
+def test_real_cross_run_evaluation_without_training(project: Path) -> None:
+    setup(project)
+    trained = api.run()
+    assert trained.state == "succeeded"
+    directory = project / ".mlef/runs" / trained.id / "artifacts/pipeline"
+    lines = ["schema_version = 2", "[[steps]]", 'name = "evaluate"', 'script = "steps/evaluate.py"']
+    for binding, producer, output in [
+        ("model", "train", "model"),
+        ("partitions", "split", "partitions"),
+    ]:
+        reference = read_step(attempt_directory(directory, producer)).artifacts[output].producer
+        assert reference is not None
+        lines.extend(
+            [
+                f"[steps.bindings.{binding}]",
+                f'run_id = "{trained.id}"',
+                f"[steps.bindings.{binding}.artifact]",
+            ]
+        )
+        lines.extend(
+            f"{key} = {json.dumps(value)}" for key, value in reference.model_dump().items()
+        )
+    (project / "evaluation.toml").write_text("\n".join(lines))
+    evaluated = api.run("evaluation.toml")
+    assert evaluated.state == "succeeded"
+    saved = api.pipeline_status(evaluated.id, verify=True)
+    assert saved.order == ["evaluate"]
+    evidence = api.run_metrics(evaluated.id, step="evaluate")
+    assert evidence.artifacts[0].metrics.model is not None
+    assert evidence.artifacts[0].metrics.model.run_id == trained.id
+    assert evidence.artifacts[0].metrics.values["mae"].model_dump()["value"] == 3
+
+
 def test_real_cache_hits_and_forced_dependent_execution(project: Path) -> None:
     setup(project)
     definition = project / "mlef.toml"

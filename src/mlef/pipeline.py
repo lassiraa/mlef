@@ -20,8 +20,8 @@ from pydantic import (
     model_validator,
 )
 
-from .artifacts import ArtifactType, CustomType, safe_path
-from .records import Contract
+from .artifacts import ArtifactRef, ArtifactType, CustomType, safe_path
+from .records import Contract, run_id
 
 if TYPE_CHECKING:
     from .sdk import Artifact, ArtifactSource, LocalContext, StepResult
@@ -143,11 +143,18 @@ class StepV1(Contract):
     outputs: list[Output] = Field(min_length=1)
 
 
+class ExternalInput(Contract):
+    run_id: str
+    artifact: ArtifactRef
+
+    _run_id = field_validator("run_id")(run_id)
+
+
 class PipelineStep(Contract):
     name: Name
     script: str
     contract: str | None = None
-    bindings: dict[Name, str] = Field(default_factory=dict)
+    bindings: dict[Name, str | ExternalInput] = Field(default_factory=dict)
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
     cache: bool = False
     cache_version: str | None = Field(default=None, min_length=1)
@@ -158,11 +165,17 @@ class PipelineStep(Contract):
 
 
 class PipelineDefinition(Contract):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 1
     steps: list[PipelineStep] = Field(min_length=1)
 
     @model_validator(mode="after")
     def unique_steps(self) -> Self:
+        if self.schema_version == 1 and any(
+            isinstance(value, ExternalInput)
+            for step in self.steps
+            for value in step.bindings.values()
+        ):
+            raise ValueError("External input bindings require pipeline schema_version=2.")
         names = [step.name for step in self.steps]
         if len(set(names)) != len(names):
             raise ValueError("Pipeline step names must be unique.")
@@ -338,6 +351,15 @@ def validate(root: Path, definition: Path = Path("mlef.toml")) -> ValidationRepo
                         "invalid", "binding", f"Required input is unbound: {item.name}", entry.name
                     )
         for name, reference in entry.bindings.items():
+            if isinstance(reference, ExternalInput):
+                check(
+                    "verified",
+                    "external_binding",
+                    "Exact external reference declared; payload/type verification "
+                    "occurs during preparation.",
+                    entry.name,
+                )
+                continue
             parts = reference.split(".")
             if len(parts) != 2 or parts[0] not in dependencies:
                 check(

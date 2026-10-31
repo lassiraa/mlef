@@ -25,11 +25,13 @@ from mlef.execution import (
     _save,
     attempt_directory,
     execute_pipeline,
+    imported_directory,
     prepare_pipeline,
     read_pipeline,
 )
+from mlef.external_inputs import stage as stage_external_inputs
 from mlef.locking import file_lock, run_lock
-from mlef.pipeline import validate
+from mlef.pipeline import ExternalInput, validate
 from mlef.project import initialize
 from mlef.provenance import capture, extract_source
 from mlef.records import RunRecord, read_run
@@ -37,6 +39,7 @@ from mlef.reuse import copy_snapshot, reuse_steps, verify_source
 from mlef.runner import now, run, save, source_files
 from mlef.sdk import LocalContext, read_step
 from mlef.sdk_distribution import capture_sdk
+from mlef.transfers import LocalStore, fetch, publish
 
 LOCKED = Path(__file__).resolve().parents[1] / "examples/pipeline"
 
@@ -756,6 +759,97 @@ def prepare(project: Path) -> Path:
     directory = run_dir / "artifacts/pipeline"
     prepare_pipeline(project, Path("mlef.toml"), directory, identifier, inputs.source_sha256, sdk)
     return directory
+
+
+@pytest.mark.parametrize("failure", [None, "checksum", "type", "active"])
+def test_exact_external_inputs_are_self_contained(project: Path, failure: str | None) -> None:
+    setup(project)
+    original = prepare(project)
+    assert execute_pipeline(project, original) == 0
+    identifier = original.parents[1].name
+    parent = read_run(original.parents[1] / "run.json")
+    if failure != "active":
+        parent.state = "succeeded"
+        parent.finished_at = now()
+        parent.execution_exit_code = 0
+        save(original.parents[1] / "run.json", parent)
+    lines = ["schema_version = 2", "[[steps]]", 'name = "evaluate"', 'script = "steps/evaluate.py"']
+    lines.append("cache = true")
+    for binding, producer, output in [
+        ("model", "train", "model"),
+        ("partitions", "split", "partitions"),
+    ]:
+        reference = read_step(attempt_directory(original, producer)).artifacts[output].producer
+        assert reference is not None
+        if failure == "checksum":
+            reference = reference.model_copy(update={"sha256": "f" * 64})
+        lines.extend(
+            [
+                f"[steps.bindings.{binding}]",
+                f'run_id = "{identifier}"',
+                f"[steps.bindings.{binding}.artifact]",
+            ]
+        )
+        lines.extend(
+            f"{key} = {json.dumps(value)}" for key, value in reference.model_dump().items()
+        )
+    (project / "mlef.toml").write_text("\n".join(lines))
+    if failure == "type":
+        script = project / "steps/evaluate.py"
+        script.write_text(script.read_text().replace("ArtifactType.FILE", "ArtifactType.DIRECTORY"))
+    report = validate(project)
+    assert report.status == "verified"
+    directory = prepare(project)
+    if failure is not None:
+        with pytest.raises(
+            ValueError,
+            match={"checksum": "exact producer", "type": "incompatible", "active": "terminal"}[
+                failure
+            ],
+        ):
+            stage_external_inputs(project, directory)
+        return
+    stage_external_inputs(project, directory)
+    record = read_pipeline(directory, verify=True)
+    external = record.definition.steps[0].bindings["model"]
+    assert isinstance(external, ExternalInput)
+    assert record.order == ["evaluate"]
+    assert record.execution_steps("evaluate") == {"evaluate"}
+    # Hide the producer to demonstrate execution and verification use captured copies.
+    source_dir = original.parents[1]
+    hidden = project / ".mlef/hidden-producer"
+    assert source_dir.resolve().is_relative_to((project / ".mlef/runs").resolve())
+    assert hidden.resolve().is_relative_to((project / ".mlef").resolve())
+    source_dir.rename(hidden)
+    cache_environment(project, directory)
+    configure_cache(project, directory)
+    assert execute_pipeline(project, directory) == 0
+    completed = read_pipeline(directory, verify=True)
+    assert completed.state == "complete"
+    assert read_step(attempt_directory(directory, "evaluate")).inputs["model"] == external.artifact
+    parent = read_run(directory.parents[1] / "run.json")
+    parent.state = "succeeded"
+    parent.finished_at = now()
+    parent.execution_exit_code = 0
+    save(directory.parents[1] / "run.json", parent)
+    store = LocalStore(project / ".mlef/transfer-store")
+    publish(project, parent.id, store)
+    fetched_root = project / ".mlef/fetched-project"
+    initialize(fetched_root, scaffold=False)
+    fetch(fetched_root, parent.id, store)
+    fetched_pipeline = fetched_root / ".mlef/runs" / parent.id / "artifacts/pipeline"
+    assert read_pipeline(fetched_pipeline, verify=True).state == "complete"
+    resumed = prepare(project)
+    stage_external_inputs(project, resumed, resume_from=parent.id)
+    cache_environment(project, resumed)
+    configure_cache(project, resumed, candidate=parent.id)
+    assert read_pipeline(resumed).attempts["evaluate"].reused_from == parent.id
+    assert execute_pipeline(project, resumed) == 0
+    assert read_pipeline(resumed, verify=True).state == "complete"
+    copied_model = imported_directory(resumed, external) / "outputs/model/model.json"
+    copied_model.write_text("{}")
+    with pytest.raises(ValueError, match="bytes or inventory changed"):
+        read_pipeline(resumed, verify=True)
 
 
 def test_model_catalog_registration_and_retrieval(
