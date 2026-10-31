@@ -1,0 +1,35 @@
+"""Fit a constant prediction using only the saved training observations."""
+
+import argparse
+import json
+from pathlib import Path
+from statistics import mean
+
+from mlef import Artifact, ArtifactType, Input, Output, Step, load_artifacts
+
+step = Step(
+    name="train",
+    inputs=[Input(name="partitions", type=ArtifactType.DIRECTORY, format="application/json")],
+    outputs=[Output(name="model", type=ArtifactType.FILE, format="application/json")],
+)
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("directory", type=Path)
+    args = parser.parse_args()
+    inputs = load_artifacts(args.directory / "split")
+    with step.local(args.directory / "train", inputs=inputs) as context:
+        values = json.loads(
+            context.input_path("partitions", "train.json").read_text(encoding="utf-8")
+        )
+        path = context.output_path("model", "model.json")
+        path.write_text(json.dumps({"prediction": mean(values)}), encoding="utf-8")
+        step.save(
+            [Artifact(name="model", type=ArtifactType.FILE, format="application/json", path=path)],
+            context=context,
+        )
+
+
+if __name__ == "__main__":
+    main()

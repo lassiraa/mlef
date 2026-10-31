@@ -41,6 +41,9 @@ dev = [
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+mlef = ["templates/*.txt", "templates/*.toml"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

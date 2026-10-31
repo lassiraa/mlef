@@ -78,7 +78,7 @@ shorthands, not exported types. Every ``root`` defaults to ``None``.
 
 .. code-block:: python
 
-    init(*, root: Root = None) -> None
+    init(*, root: Root = None, scaffold: bool = True) -> None
     run(
         script: PathLike, *, root: Root = None,
         arguments: list[str] | None = None,
