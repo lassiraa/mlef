@@ -268,6 +268,7 @@ def run(
     force: list[str] | None = None,
     _identifier: str | None = None,
     _token: str | None = None,
+    _source_snapshot: Path | None = None,
 ) -> int:
     from .supervision import Request, identity, supervise
 
@@ -281,6 +282,10 @@ def run(
     script_budget = Budget(max_log_bytes)
     Budget(max_runner_log_bytes)
     pipeline = script.suffix == ".toml"
+    if _source_snapshot is not None and (
+        not pipeline or reuse_from is not None or cache_from is not None
+    ):
+        raise ValueError("Frozen evaluation source requires a fresh pipeline run.")
     force = force or []
     if (cache_from is not None and (not pipeline or reuse_from is not None or resume)) or (
         force and cache_from is None
@@ -323,6 +328,7 @@ def run(
                 resume=resume,
                 cache_from=cache_from,
                 force=force,
+                source_snapshot=str(_source_snapshot) if _source_snapshot is not None else None,
             )
         )
     if not (root / ".mlef" / "runs").is_dir():
@@ -333,11 +339,11 @@ def run(
         assert reuse_from is not None
         script = Path(verify_source(root, reuse_from).definition_path)
     relative_path(root, script)
-    if not resume and not (root / script).is_file():
+    if not resume and _source_snapshot is None and not (root / script).is_file():
         raise ValueError(f"Script does not exist or is not a file: {script}")
     for output in outputs:
         relative_path(root, output)
-    if pipeline and not resume:
+    if pipeline and not resume and _source_snapshot is None:
         report = validate(root, script)
         if report.status != "verified" or report.definition is None:
             raise ValueError("Pipeline must validate before execution: " + report.model_dump_json())
@@ -350,7 +356,7 @@ def run(
                 if entry.contract is not None
             ),
         ]
-    files = source_files(root, script, includes) if not resume else []
+    files = source_files(root, script, includes) if not resume and _source_snapshot is None else []
     specification = experiment_spec(root, experiment) if experiment is not None else None
     run_id = _identifier if _identifier is not None else str(uuid4())
     run_dir = root / ".mlef" / "runs" / run_id
@@ -408,7 +414,13 @@ def run(
 
             try:
                 stage("source_capture")
-                if resume:
+                snapshot = None
+                if _source_snapshot is not None:
+                    from .snapshots import restore
+
+                    snapshot = restore(_source_snapshot, run_dir)
+                    git_provenance, inputs = snapshot.git, snapshot.inputs
+                elif resume:
                     from . import storage
                     from .reuse import copy_snapshot
 
@@ -441,7 +453,9 @@ def run(
                                 "'typing-extensions>=4.12'."
                             )
                         stage("sdk_capture")
-                        if resume:
+                        if snapshot is not None:
+                            environment.sdk_wheel = snapshot.sdk
+                        elif resume:
                             from .reuse import verify_source
 
                             assert reuse_from is not None

@@ -404,8 +404,9 @@ diagnostics. Generic steps retain their existing behavior.
 
 These checks validate declared identities and payload structure. They do not
 execute a scorer, establish evaluation protocol identity, validate actual row
-usage, or prevent trusted scripts from fitting on evaluation data. Reusable
-evaluation records and multi-model execution remain planned. ``read_step`` alone
+usage, or prevent trusted scripts from fitting on evaluation data. See
+:doc:`evaluations` for frozen evaluation recipes and sequential model batches.
+``read_step`` alone
 verifies saved output inventories; ``pipeline_status(..., verify=True)`` also
 rechecks typed role evidence against the captured producer wiring.
 
@@ -506,8 +507,8 @@ Python callers can construct ``ExternalInput(run_id=location, artifact=reference
 from ``mlef``. For registered models, the location is
 ``version.artifact.location_run_id`` and the reference is
 ``version.artifact.manifest.producer``. Pipeline definitions still contain fixed
-references when captured; model selection and evaluation batches remain separate
-planned commands. Older SDKs cannot read version-2 pipeline definitions. The
+references when captured; :doc:`evaluations` selects registered models and
+generates these bindings for evaluation batches. Older SDKs cannot read version-2 pipeline definitions. The
 published ``pipeline-v1`` schema remains unchanged; ``pipeline-v2`` describes the
 current reader, with the version/binding restriction enforced by Pydantic.
 

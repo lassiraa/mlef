@@ -12,6 +12,7 @@ from pydantic import Field
 
 from . import comparison, models, recovery, storage
 from .environment import file_hash
+from .evaluations import EvaluationBatch, EvaluationListing
 from .events import Delivery, LogEvent
 from .evidence import Result, read_result
 from .execution import PipelineRecord, read_pipeline, verify_source_archive
@@ -33,6 +34,8 @@ from .tabular_runtime import Profile
 from .transfers import RunTransfer, backend, fetch, publish
 
 __all__ = [
+    "EvaluationBatch",
+    "EvaluationListing",
     "LogEvent",
     "MlefError",
     "ModelListing",
@@ -45,11 +48,14 @@ __all__ = [
     "artifacts",
     "compare",
     "compare_tabular",
+    "evaluate",
+    "evaluation_batch",
     "export_tabular_artifacts",
     "fetch_run",
     "get",
     "get_model",
     "init",
+    "list_evaluations",
     "list_models",
     "list_runs",
     "model_version",
@@ -112,6 +118,40 @@ class RunHistory(RunListing):
     schema_version: Literal[1] = 1
     total: int
     next_offset: int | None
+
+
+@_translated
+def evaluate(
+    definition: Path | str,
+    models: list[str],
+    *,
+    options: RunOptions | None = None,
+    root: Path | str | None = None,
+) -> EvaluationBatch:
+    from .evaluations import evaluate as execute
+
+    return execute(
+        project_root(root),
+        Path(definition),
+        models,
+        options if options is not None else RunOptions(),
+    )
+
+
+@_translated
+def evaluation_batch(identifier: str, *, root: Path | str | None = None) -> EvaluationBatch:
+    from .evaluations import show
+
+    return show(project_root(root), identifier)
+
+
+@_translated
+def list_evaluations(
+    *, model: str | None = None, limit: int = 50, offset: int = 0, root: Path | str | None = None
+) -> EvaluationListing:
+    from .evaluations import listing
+
+    return listing(project_root(root), model, limit=limit, offset=offset)
 
 
 @_translated
