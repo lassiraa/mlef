@@ -29,6 +29,7 @@ from mlef.metrics import Metrics
 from mlef.records import RunRecord
 from mlef.runner import save
 from mlef.sdk import _inventory, _write_result
+from mlef.storage import QueryError
 from mlef.tabular_artifacts import read_artifacts
 from mlef.tabular_comparison import compare_tabular
 from mlef.tabular_runtime import Evaluation, Fold, Protocol, Split, digest, measure, metric_evidence
@@ -270,13 +271,11 @@ def test_comparison_uses_scoring_semantics_not_only_metric_names(
     path.write_bytes(original)
     evidence["metric_evidence"] = None
     path.write_text(json.dumps(evidence))
-    assert compare_tabular(project, identifier, other).compatibility == "unknown"
-    other_path = path.parents[2] / other / "artifacts/evaluation.json"
-    other_path.write_text(json.dumps(evidence))
-    assert compare_tabular(project, identifier, other).compatibility == "matched"
+    with pytest.raises(QueryError, match="validation error"):
+        compare_tabular(project, identifier, other)
 
 
-def test_legacy_dataset_content_identity_is_unchanged() -> None:
+def test_dataset_content_identity_includes_all_semantic_fields() -> None:
     original = {
         "schema_version": 1,
         "type": "dataset",
@@ -288,6 +287,9 @@ def test_legacy_dataset_content_identity_is_unchanged() -> None:
             "columns": [{"name": "id", "dtype": "str", "role": "row_id", "nullable": False}],
             "row_id": ["id"],
             "statistics": "omitted",
+            "dataset_sha256": None,
+            "row_ids_sha256": None,
+            "profile": None,
         },
     }
     identity = hashlib.sha256(
@@ -298,7 +300,7 @@ def test_legacy_dataset_content_identity_is_unchanged() -> None:
     assert manifest.content_sha256() == identity
 
 
-def test_cli_exports_historical_evidence_without_mutating_the_run(
+def test_cli_exports_evidence_without_mutating_the_run(
     project: Path,
     saved: tuple[str, Path],
     tmp_path: Path,
@@ -306,11 +308,6 @@ def test_cli_exports_historical_evidence_without_mutating_the_run(
 ) -> None:
     identifier, data = saved
     path = project / ".mlef/runs" / identifier / "artifacts/evaluation.json"
-    evidence = json.loads(path.read_text())
-    del evidence["metric_evidence"]
-    if evidence["protocol"]["task"] == "binary":
-        evidence["schema_version"] = 1
-    path.write_text(json.dumps(evidence))
     original = path.read_bytes()
     destination = tmp_path / "cli-export"
     result = cli(

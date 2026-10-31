@@ -250,10 +250,6 @@ class ArtifactManifest(Contract):
     def content_sha256(self) -> str:
         """Hash semantic metadata and canonical inventory, excluding name/provenance."""
         content = self.model_dump(mode="json", exclude={"name", "producer"})
-        if isinstance(self.metadata, DatasetMetadata):
-            for extension in ("dataset_sha256", "row_ids_sha256", "profile"):
-                if content["metadata"][extension] is None:
-                    del content["metadata"][extension]
         content["files"] = [
             file.model_dump(mode="json") for file in sorted(self.files, key=lambda file: file.path)
         ]

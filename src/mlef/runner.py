@@ -535,11 +535,7 @@ def run(
                 environment.warnings = []
                 warnings.clear()
                 save(run_dir / "environment.json", environment.model_dump())
-                if (
-                    pipeline
-                    and environment.sdk_wheel is not None
-                    and environment.sdk_wheel.pipeline_cache
-                ):
+                if pipeline:
                     from .cache import configure_cache
 
                     stage("cache_selection")

@@ -142,18 +142,8 @@ def read_run(path: Path) -> RunRecord:
     if not isinstance(data, dict):
         raise ValueError("Run metadata must be a JSON object.")
     version = data.get("schema_version")
-    if type(version) is not int or version not in (1, 2, 3):
+    if type(version) is not int or version != 3:
         raise ValueError(f"Unsupported run schema version: {version!r}")
-    if version in (1, 2):
-        data = dict(data)
-        data["schema_version"] = 3
-        warnings = data.get("warnings", [])
-        if not isinstance(warnings, list):
-            raise ValueError("Invalid legacy warnings.")
-        data["warnings"] = [
-            *warnings,
-            f"Legacy version-{version} record; absent controls/evidence are unknown.",
-        ]
     record = RunRecord.model_validate(data)
     if record.state in {"succeeded", "failed", "cancelled"} and record.finished_at is None:
         raise ValueError("A terminal run must have a finish timestamp.")

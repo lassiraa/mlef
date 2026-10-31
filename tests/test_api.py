@@ -15,12 +15,10 @@ from mlef.records import Dataset, Evaluation, Experiment, RunRecord
 from mlef.runner import save
 
 
-@pytest.mark.parametrize("version", [1, 2, 3])
 def test_offline_api_matches_cli(
     project: Path,
     cli: Callable[..., subprocess.CompletedProcess[str]],
     capsys: pytest.CaptureFixture[str],
-    version: int,
 ) -> None:
     api.init()
     assert capsys.readouterr().out == ""
@@ -46,10 +44,6 @@ def test_offline_api_matches_cli(
                 metric_directions={"score": "maximize"},
             ),
         ).model_dump(mode="json")
-        record["schema_version"] = version
-        if version < 3:
-            for name in ["controls", "runtime", "stage"]:
-                record.pop(name)
         (directory / "run.json").write_text(json.dumps(record))
         (directory / "artifacts/metrics.json").write_text('{"score":0.5}')
         save(directory / "result.json", normalize(project, identifier))

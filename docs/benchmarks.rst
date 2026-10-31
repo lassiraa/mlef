@@ -47,9 +47,8 @@ elapsed time, including overruns. Record agent/model/settings, seed, repetition,
 valid experiment/comparison counts, first valid validation-gain time, output bytes,
 interventions and the selected candidate's hashes. ``fixture.py pair CONTROL MLEF``
 requires matching task/protocol/model/settings/budget and reports direction-aware
-held-out improvement alongside costs and failures. Legacy accuracy-only trial
-recording/pairing remains available; regression is never stored as accuracy.
-``fixture.py report RECORDS_DIRECTORY --limit 20`` summarizes repeated v2 records
+held-out improvement alongside costs and failures.
+``fixture.py report RECORDS_DIRECTORY --limit 20`` summarizes repeated trial records
 with state counts, matched pairs, failures, unmatched/duplicate groups and invalid
 records. It reports omissions explicitly and never pools AUC/RMSE magnitudes or
 quietly selects the best duplicate observation. Keep trial records in their own
@@ -62,27 +61,3 @@ so real claims need controlled access and suitably private final evaluation data
 Keep final scoring out of iterative model selection. Benchmark accounting validates
 recorded budgets but does not enforce a global process deadline. No LLM provider
 is called by this harness, and reference/unit dry runs are not measured LLM trials.
-
-Legacy accuracy fixture
------------------------
-
-The matched-trial fixture starts with
-``uv run --locked --extra dev python benchmarks/fixture.py prepare <trial-directory>``.
-Give an agent access only to the generated ``agent/`` workspace, initialize Git there,
-and keep ``private/`` outside its accessible roots and Docker inputs. Final-test
-labels are held in the coordinator's private directory. The fixture does not
-enforce operating-system access controls; the evaluator must configure them.
-Use identical data fingerprints, agent/model versions, seeds, budgets and repetition
-indices for control (ordinary Python) and treatment (MLEF) trials. Train on
-``train.csv``, make decisions using ``validation.csv``, and submit test predictions
-only after exploration ends. Score them outside the agent workspace with
-``fixture.py score <private-labels> <predictions>``.
-
-Record a trial JSON with ``fixture.py record <input> <output>``: ``task_fingerprint``,
-``condition`` (``control`` or ``mlef``), ``agent``, ``model``, ``budget_seconds``, ``seed``,
-``repetition``, ``elapsed_seconds``, ``tool_output_bytes``, ``intervention_count``,
-``valid_comparisons``, ``time_to_first_valid_gain_seconds`` (null if absent), and
-``heldout_accuracy``. These are evaluator-recorded measurements, not automatic agent
-telemetry. ``fixture.py pair <control> <mlef>`` rejects mismatched conditions and
-reports paired differences. Repeat matched trials to assess repeatability; this
-release includes the fixture, not a measured claim that MLEF improves agents.

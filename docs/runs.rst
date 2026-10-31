@@ -45,7 +45,7 @@ optional host dependency, credentials, retries and privacy limitations.
 ``run`` without a path executes ``mlef.toml``; a ``.toml`` path selects another
 :doc:`captured script pipeline <pipelines>`. Pipeline definitions require a locked
 experiment environment and scripts using ``step.context()``. Script arguments,
-``--output`` and ``--experiment`` apply only to legacy single-script runs, not
+``--output`` and ``--experiment`` apply only to single-script runs, not
 pipelines. Shared run limits and ``--include`` also apply to pipeline runs.
 Explicit ``--reuse-from RUN --from-step STEP`` copies verified completed attempts
 outside the selected step's downstream dependency frontier. Add ``--resume`` to
@@ -99,7 +99,7 @@ Abandoned runs
 ``mlef recover <run-id> [--json]`` explicitly finalizes an abandoned owned run.
 Kernel locks protect live runners, supervising parents and concurrent recovery;
 ordinary status/list queries remain read-only. Recovery requires the recorded
-project identity and exact Docker ownership labels, refuses unknown legacy
+project identity and exact Docker ownership labels, refuses unknown
 ownership, and leaves metadata unchanged when Docker is unavailable. Missing
 containers never imply success. Collected outputs are never overwritten; a
 collection failure retains the container for inspection/retry. Recovery marks an
@@ -119,8 +119,7 @@ relative to HEAD (the empty tree for an unborn repository), and the generated
 ``Dockerfile``. Detached HEAD records a null branch. The archive defines the actual
 source inputs; the patch contains tracked changes only.
 Root dependency manifests and locks are included even when untracked.
-New runs write version-3 Pydantic metadata. Inspection reads pre-release version-1/version-2
-records without rewriting them and marks unavailable evidence as unknown.
+Runs use Pydantic metadata.
 It resolves ``python:3.12-slim`` to an immutable digest and executes from ``/workspace``; your working tree
 is never mounted into the experiment. Run storage and credential files are
 excluded. Symlink inputs are currently unsupported. Changes made while source

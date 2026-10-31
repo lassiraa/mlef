@@ -48,11 +48,11 @@ reuse the CLI's execution, storage, comparison and recovery services. ``run``,
 normalized ``result`` evidence; ``list_runs`` returns ``RunListing(runs, diagnostics)``.
 Artifact listing returns relative names; ``get`` returns the retrieved ``Path``;
 ``compare`` returns the existing ``Comparison`` contract. Use ``model_dump(mode="json")``
-for JSON-compatible output. Version-1/version-2 records use the same read adapters
-as CLI queries. Control options are validated by ``RunOptions`` before execution.
+for JSON-compatible output.
+Control options are validated by ``RunOptions`` before execution.
 
 ``run()`` defaults to the captured ``mlef.toml`` pipeline; pass a script path for
-legacy single-script execution. ``pipeline_status`` returns a ``PipelineRecord``
+single-script execution. ``pipeline_status`` returns a ``PipelineRecord``
 from ``mlef.execution`` without executing code or requiring Docker. Use
 ``verify=True`` to check saved source/SDK bytes, completed output inventories and
 input producer wiring, and to reject runs with resource cleanup pending. See

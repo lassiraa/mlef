@@ -419,18 +419,15 @@ def test_input_bytes_change_fingerprints_independently_of_source(
     assert current.inputs != decision.fingerprint.inputs
 
 
-def test_legacy_sdk_serialization_omits_cache_and_parameter_extensions(project: Path) -> None:
+def test_pipeline_serialization_preserves_cache_and_parameter_fields(project: Path) -> None:
     setup(project)
     directory = prepare(project)
     record = read_pipeline(directory)
-    record.sdk_wheel.pipeline_cache = False
-    record.cache_source = None
     _save(directory, record)
     values = json.loads((directory / "pipeline.json").read_text())
-    assert "cache_from" not in values
-    assert "cache" not in values["attempts"]["ingest"]
-    assert "pipeline_cache" not in values["sdk_wheel"]
-    assert "parameters" not in values["definition"]["steps"][0]
+    assert "cache_from" in values
+    assert "cache" in values["attempts"]["ingest"]
+    assert "parameters" in values["definition"]["steps"][0]
     assert execute_pipeline(project, directory) == 0
 
 
@@ -671,7 +668,7 @@ def test_cli_forwards_explicit_reuse(project: Path, monkeypatch: pytest.MonkeyPa
     assert calls[0]["resume"] is True
 
 
-def test_reuse_rejects_active_cleanup_pending_and_legacy_sdk_sources(project: Path) -> None:
+def test_reuse_rejects_active_and_cleanup_pending_sources(project: Path) -> None:
     setup(project)
     original = prepare(project)
     record = read_pipeline(original)
@@ -686,14 +683,6 @@ def test_reuse_rejects_active_cleanup_pending_and_legacy_sdk_sources(project: Pa
     save(original.parents[1] / "run.json", parent)
     with pytest.raises(ValueError, match="resources need recovery"):
         verify_source(project, record.run_id)
-    parent.runtime.cleanup_pending = False
-    save(original.parents[1] / "run.json", parent)
-    record.sdk_wheel.pipeline_reuse = False
-    _save(original, record)
-    destination = project / "copied-snapshot"
-    destination.mkdir()
-    with pytest.raises(ValueError, match="captured SDK does not support"):
-        copy_snapshot(project, record.run_id, destination)
 
 
 def test_runner_resume_never_reads_live_source_or_recaptures_sdk(

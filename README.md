@@ -5,12 +5,12 @@ on the same saved folds. Use the CLI yourself or the Python API from an agent.
 
 MLEF keeps source snapshots, locked environments, logs, metrics and artifacts
 together in your Git project's `.mlef/` directory. No account, database or LLM
-provider is required. Release candidate: **0.1.0rc1**.
+provider is required. Version: **0.1.0**.
 
 ## Quick start
 
 Install [uv](https://docs.astral.sh/uv/getting-started/installation/), Git,
-Python 3.11â€“3.14, and Docker with a running Linux-container engine:
+Python 3.11-3.14, and Docker with a running Linux-container engine:
 
 ```text
 git clone https://github.com/lassiraa/mlef.git

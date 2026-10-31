@@ -14,8 +14,6 @@ from .tabular_runtime import (
     Prediction,
     digest,
     measure,
-    metric_evidence,
-    parse_evaluation,
 )
 
 MAX_EVIDENCE_BYTES = 32 * 1024 * 1024
@@ -65,11 +63,7 @@ def load_evaluation(root: Path, identifier: str) -> tuple[Evaluation, list[Predi
 def evaluation_metrics(result: Evaluation) -> Metrics:
     if not result.complete or len(result.folds) != len(result.protocol.splits):
         raise ValueError("Structured metrics require a complete evaluation.")
-    metrics = Metrics.model_validate(
-        result.metric_evidence
-        if result.metric_evidence is not None
-        else metric_evidence(result.protocol, result.folds)
-    )
+    metrics = Metrics.model_validate(result.metric_evidence)
     name = result.protocol.metric + "_mean"
     scalar = metrics.values.get(name)
     expected = sum(fold.score or 0 for fold in result.folds) / len(result.folds)
@@ -95,7 +89,7 @@ def read_evaluation(path: Path, predictions: Path) -> tuple[Evaluation, list[Pre
             for item in [path, predictions]
         ):
             raise ValueError("Tabular evidence must be regular files of at most 32 MiB each.")
-        result = parse_evaluation(read_json(path))
+        result = Evaluation.model_validate(read_json(path))
         protocol = result.protocol
         expected = {split.id: split for split in protocol.splits}
         seen: set[str] = set()
@@ -171,10 +165,10 @@ def read_evaluation(path: Path, predictions: Path) -> tuple[Evaluation, list[Pre
                 )
                 if fold.score is None or abs(recomputed - fold.score) > 1e-10:
                     raise ValueError("Reported score differs from saved predictions.")
-        if result.metric_evidence is not None:
-            if not result.complete:
-                raise ValueError("Incomplete evaluations cannot publish aggregate metrics.")
+        if result.complete:
             evaluation_metrics(result)
+        elif result.metric_evidence is not None:
+            raise ValueError("Incomplete evaluations cannot publish aggregate metrics.")
         return result, rows
     except QueryError:
         raise
@@ -216,15 +210,11 @@ def compare_tabular(
     ):
         result.reasons.append("Both runs and every required fold must succeed.")
         return result
-    if (first.metric_evidence is None) != (second.metric_evidence is None):
-        result.reasons.append("Structured scoring semantics are missing from one historical run.")
+    differences = evaluation_metrics(first).semantic_differences(evaluation_metrics(second))
+    if differences:
+        result.compatibility = "incompatible"
+        result.reasons.extend(differences)
         return result
-    if first.metric_evidence is not None and second.metric_evidence is not None:
-        differences = evaluation_metrics(first).semantic_differences(evaluation_metrics(second))
-        if differences:
-            result.compatibility = "incompatible"
-            result.reasons.extend(differences)
-            return result
     labels = {(row.fold, row.row_id): row.truth for row in left_predictions}
     if labels != {(row.fold, row.row_id): row.truth for row in right_predictions}:
         result.compatibility = "incompatible"

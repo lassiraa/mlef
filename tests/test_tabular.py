@@ -441,25 +441,27 @@ def test_regression_comparison_and_original_units(
     assert measure([0.0, 4.0], [0.0, 0.0], "rmse") == pytest.approx(8**0.5)
 
 
-def test_legacy_tabular_evidence_and_invalid_regression_targets(project: Path, data: Path) -> None:
+@pytest.mark.parametrize("contract", ["evaluation", "protocol"])
+def test_obsolete_tabular_versions_are_rejected(project: Path, data: Path, contract: str) -> None:
     from mlef.tabular_comparison import load_evaluation
 
     identifier = stored(project, data)
     path = project / ".mlef/runs" / identifier / "artifacts/evaluation.json"
     values = read_object(path)
-    values["schema_version"] = 1
-    protocol = values["protocol"]
-    assert isinstance(protocol, dict)
-    protocol["schema_version"] = 1
-    values.pop("model_artifact")
-    folds = values["folds"]
-    assert isinstance(folds, list)
-    for fold in folds:
-        assert isinstance(fold, dict)
-        fold.pop("fit")
+    if contract == "evaluation":
+        values["schema_version"] = 1
+    else:
+        protocol = values["protocol"]
+        assert isinstance(protocol, dict)
+        protocol["schema_version"] = 1
     path.write_text(json.dumps(values))
-    assert load_evaluation(project, identifier)[0].protocol.schema_version == 1
-    assert api.compare_tabular(identifier, identifier).compatibility == "matched"
+    original = path.read_bytes()
+    with pytest.raises(QueryError, match="schema_version"):
+        load_evaluation(project, identifier)
+    assert path.read_bytes() == original
+
+
+def test_invalid_regression_targets(data: Path) -> None:
     data.write_text(data.read_text().replace("0,0,0,", "0,0,NaN,"))
     with pytest.raises(ValueError, match="finite"):
         prepare(data, identifier="id", target="target", numeric=["x"], task="regression")

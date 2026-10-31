@@ -9,6 +9,7 @@ Development and release checks
     uv run --locked --extra dev ruff check .
     uv run --locked --extra dev ruff format --check .
     uv run --locked --extra dev ty check
+    uv run --locked --extra dev python scripts/export_schemas.py --check
     uv run --locked --extra dev pytest -v
 
 
@@ -33,7 +34,9 @@ Versioned JSON Schemas are in `schemas <https://github.com/lassiraa/mlef/tree/ma
 `result v1 <https://github.com/lassiraa/mlef/blob/main/schemas/result-v1.schema.json>`_, `environment v1 <https://github.com/lassiraa/mlef/blob/main/schemas/environment-v1.schema.json>`_,
 and `comparison v1 <https://github.com/lassiraa/mlef/blob/main/schemas/comparison-v1.schema.json>`_. Regenerate them with
 ``uv run --locked --extra dev python scripts/export_schemas.py``; CI checks that the
-committed copies match the Pydantic contracts. ``run.json``, ``environment.json`` and
+committed schema files exactly match the Pydantic contracts.
+Schema version numbers identify contracts independently of the package version.
+``run.json``, ``environment.json`` and
 ``result.json`` are saved atomically. Run directories and artifacts are authoritative;
 there is no database, hosted backend, daemon or mandatory LLM service.
 
@@ -60,6 +63,20 @@ Both formats are installed and exercised outside the checkout. Review the comple
 PR stack and platform limitations before tagging or publishing. Publication is a
 separate release action; no CI push or PR event publishes this package.
 
+Before the initial 0.1.0 release:
+
+* Set the final version in ``pyproject.toml`` and ``src/mlef/__init__.py``, update
+  the README release status and deliberately regenerate ``uv.lock``. Keep the
+  development-status classifier consistent with the release's maturity.
+* Run all checks above, the schema check and the strict documentation build.
+  Confirm the Linux Docker job passes on the exact release commit; local skipped
+  integration tests are not evidence that Docker execution passed.
+* Build into an empty output directory and verify both distributions. Inspect
+  their metadata, license, templates and schemas before uploading those same bytes.
+* Publish explicitly using the maintainer's chosen registry credentials, then
+  verify installation and ``mlef --version`` from outside the checkout. Tag the
+  verified commit and describe supported platforms and format limitations.
+
 Documentation website
 ---------------------
 
@@ -76,7 +93,7 @@ as failures. Add new pages to ``docs/index.rst`` and use Sphinx document/referen
 roles for internal links. Keep runnable examples in ``examples/`` and link to
 those sources rather than copying complete programs.
 
-The Documentation workflow checks PRs and deploys successful builds from ``main``
+The Documentation workflow checks every PR, including source-only changes, and deploys successful builds from ``main``
 to https://lassiraa.github.io/mlef/. GitHub Pages and standard hosted Actions jobs
 are free for this public repository; no paid service or custom domain is required.
 Pages uses the ``github-pages`` environment with deployment limited to ``main``.

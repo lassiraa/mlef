@@ -30,17 +30,16 @@ def saved_run(
     return directory
 
 
-def test_legacy_adapter_is_read_only(project: Path) -> None:
+@pytest.mark.parametrize("version", [1, 2])
+def test_obsolete_run_versions_are_rejected_without_rewriting(project: Path, version: int) -> None:
     path = saved_run(project) / "run.json"
     data = json.loads(path.read_text())
-    data["schema_version"] = 1
+    data["schema_version"] = version
     del data["experiment"]
     path.write_text(json.dumps(data))
     original = path.read_bytes()
-    record = read_run(path)
-    assert record.schema_version == 3
-    assert record.git is record.inputs is record.experiment is None
-    assert "Legacy" in record.warnings[-1]
+    with pytest.raises(ValueError, match="Unsupported run schema version"):
+        read_run(path)
     assert path.read_bytes() == original
 
 
