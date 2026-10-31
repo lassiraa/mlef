@@ -381,10 +381,33 @@ The runner retains the role in captured contracts and enforces ordinary managed
 output publication. Specialized model/prediction metadata requirements still
 apply; a role does not replace an artifact contract or implement model loading.
 
-This initial role implementation checks declarations. It does not yet check that
-evaluation payload model/data references match bound inputs, establish protocol
-identity or prevent trusted scripts from fitting on evaluation data. Reusable
-evaluation records and multi-model execution remain planned.
+Output evidence is checked during SDK saves, clean context exit, managed
+publication after process success, and verified pipeline inspection:
+
+* A training model's optional ``training_dataset`` must reference a bound dataset
+  or the dataset identified by a bound split. Omitting it preserves unknown
+  training lineage.
+* Prediction metadata must reference the exact bound model and dataset. An
+  optional split must be bound and identify that dataset.
+* Evaluation metrics must be one structured JSON payload per metrics artifact,
+  identify the bound dataset, and identify either a bound model or bound
+  predictions. A declared split must identify a bound split for that dataset.
+* When scoring bound predictions, the metric model, dataset, split and scope
+  must match their prediction metadata exactly. Direct model evaluation can
+  declare its scope; there is no protocol scope to validate against yet.
+
+Each evaluation JSON payload has a 32 MiB limit at publication and is checked
+against its saved size/checksum before parsing. Use the existing external metric
+representation for large series/tables; these references remain unresolved.
+Malformed or inconsistent evidence fails publication and retains failed attempt
+diagnostics. Generic steps retain their existing behavior.
+
+These checks validate declared identities and payload structure. They do not
+execute a scorer, establish evaluation protocol identity, validate actual row
+usage, or prevent trusted scripts from fitting on evaluation data. Reusable
+evaluation records and multi-model execution remain planned. ``read_step`` alone
+verifies saved output inventories; ``pipeline_status(..., verify=True)`` also
+rechecks typed role evidence against the captured producer wiring.
 
 Existing declarations default to ``schema_version=1`` and ``kind="generic"``.
 Version-1 serialization omits ``kind`` and retains its original field order,
