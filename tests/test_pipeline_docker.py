@@ -49,6 +49,12 @@ def test_real_frozen_multi_model_evaluation(
         context = json.loads((project / ".mlef/runs" / item.run_id / "evaluation.json").read_text())
         assert context["protocol_id"] == batch.protocol_id
         assert context["model"]["version"] == item.model.version
+    table = api.evaluation_leaderboard(
+        batch.id, baseline=batch.evaluations[0].run_id, metric="mae", scope="test"
+    )
+    assert table.rows[0].run_id == batch.evaluations[1].run_id, table.model_dump_json()
+    assert table.rows[0].rank == 1
+    assert table.rows[0].observation == "improved"
 
 
 def test_real_cross_run_evaluation_without_training(project: Path) -> None:

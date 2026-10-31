@@ -70,8 +70,8 @@ data/split references. This identifies the shared evaluation recipe. Actual
 resolved images, Python/packages and resource controls remain part of each child
 run's normal environment evidence. A shared recipe ID alone does not establish
 statistical significance, actual row usage, leakage freedom or hardware-equivalent
-runtime measurements. Leaderboards and compatibility-aware comparisons are
-follow-up functionality.
+runtime measurements. The comparisons below verify these declarations and
+environment evidence separately.
 
 Source/SDK bundles and their checksums are verified again when each child worker
 restores them. Child runs retain their generated definition, source archive,
@@ -141,3 +141,78 @@ batch state:
 
 All methods accept the optional project ``root``. Schemas are exported as
 ``evaluation-spec-v1``, ``evaluation-batch-v1`` and ``evaluation-listing-v1``.
+
+Comparisons and leaderboards
+----------------------------
+
+Choose a scalar metric and an explicit successful baseline evaluation run:
+
+.. code-block:: text
+
+    mlef evaluations compare EVAL_A EVAL_B --baseline EVAL_A --metric mae --scope test
+    mlef evaluations leaderboard --batch BATCH --baseline EVAL_A --metric mae --scope test --json
+
+Comparison accepts 1 through 100 distinct evaluation run UUIDs. They can belong
+to different batches. Leaderboards select the child UUIDs of one saved batch.
+These queries work offline and do not execute evaluator or model code.
+
+Metric names must identify one artifact per evaluation. Use ``--scope`` and
+``--output`` to qualify ambiguous names; ``--output`` here is the metrics artifact
+output name, not a destination path. Curves, series, tables, distributions,
+matrices, external descriptors and undefined values are never implicitly reduced
+to scalar scores. Undefined reasons remain visible.
+
+Queries reverify captured source/SDK, pipeline wiring, typed role evidence and
+metric inventory bytes. They reconstruct recipe identity from captured source
+excluding the generated model-specific definition, and check that the context's
+model selection and specification match that definition. Individual comparisons
+use each child's ``evaluation.json`` and do not require the original batch/model
+catalog or training run. The context descriptor is limited to 1 MiB when read.
+
+Per-row compatibility is ``declared-compatible``, ``incompatible`` or ``unknown``.
+Known recipe, environment/control, dataset, split, scope or metric-semantic
+conflicts take precedence over missing information. Metric checks reuse
+``Metrics.semantic_differences`` for definitions/versions, units, directions,
+targets, aggregation, parameters, dimensions and sample counts. Both absent split
+references are acceptable under the same verified recipe and dataset; actual
+row use is still a declaration. Missing sample counts or complete environment
+evidence prevent ranking.
+
+Only successful, compatible scalar observations with a declared ordering rank.
+Maximize/minimize use the scalar value; target metrics use distance from their
+declared target. Direction ``none`` has no ranking. Ties share competition ranks
+(1, 1, 3). Repeated model producers or reused metric evidence are excluded from
+independent model rankings and identify the primary row through ``duplicate_of``
+(the baseline takes precedence).
+Leaderboards additionally require successful saved batch outcomes, including the
+baseline. Unstarted and failed candidates remain visible with reasons.
+
+Rows include values, signed deltas, relative deltas, scope/output, artifact/data
+references, sample counts and any supplied intervals. Relative deltas use
+``(candidate - baseline) / abs(baseline)`` and are absent for a zero baseline.
+Unrepresentable arithmetic remains unavailable with a reason. Incompatible
+evidence may still show raw values/deltas, but cannot support an improvement
+observation or rank. Corrupt or missing individual evidence produces an unknown,
+unranked row rather than trusting cached batch summaries.
+
+An observed improvement means an ordered score difference under verified
+declarations. It does not establish significance, held-out gains, leakage freedom
+or hardware-normalized runtime performance. Queries return exit 0 for a valid
+comparison even when rows are unranked; inspect ``compatibility`` and ``eligible``
+in automation. Ambiguous metric selection returns a categorized query error.
+
+.. code-block:: python
+
+    comparison = api.compare_evaluations(
+        [baseline_run, candidate_run], baseline=baseline_run,
+        metric="mae", scope="test",
+    )
+    table = api.evaluation_leaderboard(
+        batch.id, baseline=baseline_run, metric="mae", scope="test",
+    )
+
+Both APIs accept optional ``output`` and project ``root``. Their versioned schema
+is ``evaluation-comparison-v1``; the portable child descriptor schema is
+``evaluation-context-v1``. A script may execute successfully while its batch item
+fails verification if metric payloads identify a model other than the selected
+version. Such evidence cannot rank as that model.

@@ -6,9 +6,9 @@ documented in :doc:`runs`, :doc:`models`, :doc:`pipelines` or :doc:`evaluations`
 Implemented initial slices include filtered/paginated run history, run/step detail,
 root/pipeline metric inspection, model discovery and immutable registration,
 typed step roles with runtime lineage checks, exact cross-run inputs and
-sequential model batches with frozen evaluation recipes. Experiment grouping,
-model aliases, compatibility-aware comparisons, retry/reconciliation commands
-and leaderboards remain planned.
+sequential model batches with frozen evaluation recipes, verified comparisons
+and scalar leaderboards. Experiment grouping, model aliases and
+retry/reconciliation commands remain planned.
 This proposal extends the local, file-backed execution model.
 
 The intended workflow is: find previous experiments, inspect their models and

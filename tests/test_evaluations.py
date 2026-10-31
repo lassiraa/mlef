@@ -1,4 +1,5 @@
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -21,3 +22,15 @@ def test_empty_evaluation_history_is_read_only(project: Path) -> None:
     assert main(["evaluations", "show", "bad", "--json"]) == 2
     with pytest.raises(api.MlefError, match="limit"):
         api.list_evaluations(limit=0)
+
+
+def test_invalid_comparison_selection(project: Path) -> None:
+    identifier = str(uuid4())
+    for identifiers, baseline, metric in [
+        ([], identifier, "mae"),
+        ([identifier, identifier], identifier, "mae"),
+        ([identifier], str(uuid4()), "mae"),
+        ([identifier], identifier, " "),
+    ]:
+        with pytest.raises(api.MlefError, match="distinct evaluation IDs"):
+            api.compare_evaluations(identifiers, baseline=baseline, metric=metric)

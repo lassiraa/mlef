@@ -98,24 +98,37 @@ def evaluation_project(project: Path) -> Callable[[str], tuple[Path, list[str]]]
             from mlef.metrics import Series
             step = Step(schema_version=2, kind="evaluate", name="evaluate",
                 inputs=[Input(name="model", type=ArtifactType.MODEL),
+                        Input(name="aux", type=ArtifactType.MODEL, required=False),
                         Input(name="data", type=ArtifactType.DATASET)],
                 outputs=[Output(name="metrics", type=ArtifactType.METRICS,
-                                format="application/json")])
+                                format="application/json"),
+                         Output(name="extra", type=ArtifactType.METRICS,
+                                format="application/json", required=False)])
             with step.context() as context:
                 prediction = json.loads(
                     context.input_path("model", "model.json").read_text())["prediction"]
                 if context.parameters.get("fail_baseline", False) and prediction == 1:
                     raise RuntimeError("Deliberate baseline failure")
                 value = json.loads(context.input_path("data", "data.json").read_text())["value"]
-                metrics = Metrics(model=context.input_reference("model"),
+                model_input = "aux" if context.parameters.get("use_aux", False) else "model"
+                metrics = Metrics(model=context.input_reference(model_input),
                     dataset=context.input_reference("data"), scope="test",
-                    values={"mae":Scalar(definition="mae", direction="minimize",
+                    values={"mae":Scalar(definition="mae",
+                                         direction=context.parameters.get("direction", "minimize"),
+                                         target=context.parameters.get("target"),
                                          value=abs(value-prediction), sample_count=1),
                             "loss":Series(definition="loss", index="epoch", x=[1], y=[0.5])})
                 path = context.output_path("metrics", "metrics.json")
                 path.write_text(metrics.model_dump_json())
-                step.save([Artifact(name="metrics", type=ArtifactType.METRICS,
-                    format="application/json", path=path)], context=context)
+                artifacts = [Artifact(name="metrics", type=ArtifactType.METRICS,
+                    format="application/json", path=path)]
+                if context.parameters.get("duplicate", False):
+                    extra = context.output_path("extra", "metrics.json")
+                    extra.write_text(metrics.model_copy(update={"scope":"validation"})
+                                     .model_dump_json())
+                    artifacts.append(Artifact(name="extra", type=ArtifactType.METRICS,
+                        format="application/json", path=extra))
+                step.save(artifacts, context=context)
         """,
     }
     for name, script in scripts.items():
