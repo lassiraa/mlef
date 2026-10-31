@@ -418,9 +418,9 @@ published ``step-v1`` structural schema remains unchanged; ``step-v2`` describes
 the current reader, with role/version and input/output invariants additionally
 enforced by Pydantic.
 
-Pipeline definitions still use their existing ``schema_version=1``: the version
-above belongs to each embedded script contract. Continue to declare wiring as
-described below.
+The version above belongs to each embedded script contract. Local-only pipeline
+definitions can keep ``schema_version=1``; cross-run bindings require version 2
+of the pipeline definition, independently of the script contract version.
 
 Wiring with TOML
 ----------------
@@ -441,13 +441,75 @@ Store this definition in ``mlef.toml`` at the Git project root:
     [steps.bindings]
     training = "ingest.raw"
 
-Each binding maps a declared input to an exact ``step.output`` reference in this
-pipeline, not a run ID, storage URL or implicit latest output. Steps must have
+In version-1 definitions, each binding maps a declared input to an exact
+``step.output`` reference in this pipeline. Version-2 definitions also support
+the explicit cross-run references below. Steps must have
 unique names matching their declarations. References must resolve, semantic
 types and any requested formats must match, and the graph must be acyclic.
 Independent ready steps use lexicographic ordering, regardless of TOML order.
 An invalid graph has no executable order. Other errors may still return a graph
 order for diagnostics; callers must check the report's overall status first.
+
+Cross-run inputs
+----------------
+
+Use a version-2 pipeline definition to bind saved artifacts from another captured
+run. Local ``step.output`` bindings still work and can be mixed with exact
+external references. For example, an evaluation-only pipeline can bind:
+
+.. code-block:: toml
+
+    schema_version = 2
+
+    [[steps]]
+    name = "evaluate"
+    script = "steps/evaluate.py"
+
+    [steps.bindings.model]
+    run_id = "LOCATION-RUN-UUID"
+    [steps.bindings.model.artifact]
+    run_id = "ORIGINAL-PRODUCER-RUN-UUID"
+    step = "train"
+    output = "model"
+    sha256 = "FULL-ARTIFACT-CONTENT-SHA256"
+
+Replace these placeholders with complete canonical UUID4 identifiers and the
+64-character artifact content hash from saved evidence. Declare other required
+inputs, such as evaluation data, in the same way. The outer run ID locates the
+saved copy; the inner artifact reference identifies its original producer. They
+are equal for directly produced outputs and may differ for reused artifacts.
+No alias, path search, implicit latest run or remote fetch is performed.
+
+``mlef validate`` checks external reference structure without reading run storage.
+It reports that payload/type verification will happen during preparation. The
+runner then requires terminal, cleanup-complete source runs without active owners
+and verifies their captured source, SDK, completed output inventories, contracts
+and wiring. Exact producer identities and input types/formats must match; missing
+or incompatible evidence fails preparation rather than rerunning training.
+
+The runner copies each selected producer's complete step outputs into
+``artifacts/pipeline/imports/HASH`` and verifies them again. This may include sibling
+outputs from that producer step. The new run remains self-contained for execution,
+verified inspection and artifact transfer after original source runs are removed.
+Producer references remain unchanged. Embedded metric/model references do not
+cause automatic traversal to other artifacts; bind any required targets explicitly.
+
+External inputs create no dependencies on steps in the new pipeline. Cache
+fingerprints include their verified content and exact binding declarations.
+Explicit reuse still compares input bindings; normal forks and cache runs stage
+their external inputs afresh from the declared source locations. ``--resume``
+copies the saved imports from the resumed run, so its original external sources
+need not remain available. Copies retain original producer timestamps and are
+not new training executions.
+
+Python callers can construct ``ExternalInput(run_id=location, artifact=reference)``
+from ``mlef``. For registered models, the location is
+``version.artifact.location_run_id`` and the reference is
+``version.artifact.manifest.producer``. Pipeline definitions still contain fixed
+references when captured; model selection and evaluation batches remain separate
+planned commands. Older SDKs cannot read version-2 pipeline definitions. The
+published ``pipeline-v1`` schema remains unchanged; ``pipeline-v2`` describes the
+current reader, with the version/binding restriction enforced by Pydantic.
 
 Script, definition and explicit contract paths use normalized project-relative
 POSIX syntax. Absolute paths, parent traversal, symlinks, missing files, Git

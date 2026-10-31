@@ -2,14 +2,24 @@
 
 import json
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 from pydantic import ValidationError
 
 from mlef import api
-from mlef.artifacts import ArtifactType
+from mlef.artifacts import ArtifactRef, ArtifactType
 from mlef.cli import main
-from mlef.pipeline import Input, Output, PipelineDefinition, Step, ValidationReport, validate
+from mlef.pipeline import (
+    ExternalInput,
+    Input,
+    Output,
+    PipelineDefinition,
+    PipelineStep,
+    Step,
+    ValidationReport,
+    validate,
+)
 
 
 def script(root: Path, name: str, *, inputs: str = "", output: str = "") -> Path:
@@ -67,6 +77,24 @@ def test_legacy_step_serialization_is_unchanged() -> None:
     assert current.kind == "generic"
     assert current.model_dump_json() == legacy.model_dump_json()
     assert current.model_dump(mode="json") == legacy.model_dump(mode="json")
+
+
+def test_external_bindings_require_version_two() -> None:
+    identifier = str(uuid4())
+    reference = ExternalInput(
+        run_id=identifier,
+        artifact=ArtifactRef(
+            run_id=identifier,
+            step="train",
+            output="model",
+            sha256="a" * 64,
+        ),
+    )
+    entry = PipelineStep(name="evaluate", script="evaluate.py", bindings={"model": reference})
+    with pytest.raises(ValueError, match="schema_version=2"):
+        PipelineDefinition(steps=[entry])
+    definition = PipelineDefinition(schema_version=2, steps=[entry])
+    assert PipelineDefinition.model_validate_json(definition.model_dump_json()) == definition
 
 
 @pytest.mark.parametrize(

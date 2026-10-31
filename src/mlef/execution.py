@@ -1,5 +1,6 @@
 """Sequential captured script execution inside the existing supervised container."""
 
+import hashlib
 import json
 import os
 import runpy
@@ -13,7 +14,7 @@ from pydantic import Field, field_validator, model_validator
 
 from .artifacts import safe_path
 from .environment import SdkWheel, file_hash
-from .pipeline import Name, PipelineDefinition, Step, validate
+from .pipeline import ExternalInput, Name, PipelineDefinition, Step, validate
 from .provenance import extract_source
 from .records import Contract, read_json, run_id
 from .role_evidence import validate_role_evidence
@@ -138,6 +139,8 @@ class PipelineRecord(Contract):
             ):
                 raise ValueError("Pipeline bindings must match required declared inputs.")
             for binding, reference in entry.bindings.items():
+                if isinstance(reference, ExternalInput):
+                    continue
                 parts = reference.split(".")
                 if len(parts) != 2 or parts[0] not in positions:
                     raise ValueError("Pipeline bindings require known producer outputs.")
@@ -182,13 +185,21 @@ class PipelineRecord(Contract):
         entries = {entry.name: entry for entry in self.definition.steps}
         for name in self.order:
             entry = entries[name]
-            if any(reference.split(".")[0] in selected for reference in entry.bindings.values()):
+            if any(
+                isinstance(reference, str) and reference.split(".")[0] in selected
+                for reference in entry.bindings.values()
+            ):
                 selected.add(name)
         return selected
 
 
 def attempt_directory(directory: Path, name: str) -> Path:
     return _checked(directory.absolute() / "steps" / name / "1")
+
+
+def imported_directory(directory: Path, reference: ExternalInput) -> Path:
+    identity = hashlib.sha256(reference.model_dump_json().encode()).hexdigest()
+    return _checked(directory.absolute() / "imports" / identity)
 
 
 def _save(directory: Path, record: PipelineRecord) -> None:
@@ -238,6 +249,14 @@ def _context(directory: Path, record: PipelineRecord, name: str) -> LocalContext
     entry = next(entry for entry in record.definition.steps if entry.name == name)
     inputs = {}
     for binding, reference in entry.bindings.items():
+        if isinstance(reference, ExternalInput):
+            from .external_inputs import source
+
+            declaration = next(
+                item for item in record.contracts[name].inputs if item.name == binding
+            )
+            inputs[binding] = source(directory, reference, declaration)
+            continue
         producer, output = reference.split(".")
         if record.attempts[producer].state != "complete":
             raise ValueError("Pipeline inputs require a completed producer attempt.")
@@ -261,6 +280,9 @@ def read_pipeline(directory: Path, *, verify: bool = False) -> PipelineRecord:
         json.dumps(read_json(_checked(directory / "pipeline.json")), allow_nan=False)
     )
     if verify:
+        from .external_inputs import verify_imports
+
+        verify_imports(directory, record)
         for name in record.order:
             if record.attempts[name].state != "complete":
                 continue

@@ -9,6 +9,8 @@ model aliases and multi-model evaluation remain planned. :doc:`pipelines` also
 documents opt-in typed step roles with static contracts and runtime validation
 of output model/data/split/prediction references. Evaluation protocol identity
 and multi-model execution remain part of the planned evaluation workflow.
+Exact cross-run pipeline bindings now stage self-contained artifact inputs;
+evaluation batches and reusable protocol records remain planned.
 This proposal extends the local, file-backed execution model.
 
 The intended workflow is: find previous experiments, inspect their models and

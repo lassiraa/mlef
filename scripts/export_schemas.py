@@ -46,6 +46,7 @@ def main() -> None:
         ("step-v2", Step),
         ("step-result-v1", StepResult),
         ("pipeline-v1", PipelineDefinition),
+        ("pipeline-v2", PipelineDefinition),
         ("pipeline-validation-v1", ValidationReport),
         ("pipeline-run-v1", PipelineRecord),
         ("step-fingerprint-v1", StepFingerprint),
@@ -69,7 +70,23 @@ def main() -> None:
     if obsolete:
         raise ValueError(f"Remove obsolete schemas: {', '.join(sorted(obsolete))}")
     for name, model in schemas:
-        content = json.dumps(model.model_json_schema(), indent=2, sort_keys=True) + "\n"
+        schema = model.model_json_schema()
+        if name == "pipeline-v1":
+            # Preserve the published schema for definitions with only local bindings.
+            schema["properties"]["schema_version"] = {
+                "const": 1,
+                "default": 1,
+                "title": "Schema Version",
+                "type": "integer",
+            }
+            patterns = schema["$defs"]["PipelineStep"]["properties"]["bindings"][
+                "patternProperties"
+            ]
+            for pattern in patterns:
+                patterns[pattern] = {"type": "string"}
+            schema["$defs"].pop("ExternalInput", None)
+            schema["$defs"].pop("ArtifactRef", None)
+        content = json.dumps(schema, indent=2, sort_keys=True) + "\n"
         path = root / f"{name}.schema.json"
         if args.check:
             if not path.exists() or path.read_text(encoding="utf-8") != content:
