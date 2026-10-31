@@ -2,9 +2,9 @@
 
 from typing import Annotated, Literal, Self
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import Field, JsonValue, field_validator, model_validator
 
-from .artifacts import ArtifactRef
+from .artifacts import ArtifactRef, safe_path
 from .records import Contract
 
 
@@ -134,8 +134,21 @@ class Undefined(Metric):
     reason: str = Field(min_length=1)
 
 
+class ExternalMetric(Metric):
+    """An explicit reference to a complete metric JSON payload in a saved artifact."""
+
+    schema_version: Literal[1] = 1
+    kind: Literal["external"] = "external"
+    representation: Literal["series", "table", "distribution"]
+    artifact: ArtifactRef
+    path: str
+    format: Literal["application/json"] = "application/json"
+
+    _path = field_validator("path")(safe_path)
+
+
 MetricValue = Annotated[
-    Scalar | Series | Curve | Matrix | MetricTable | Distribution | Undefined,
+    Scalar | Series | Curve | Matrix | MetricTable | Distribution | Undefined | ExternalMetric,
     Field(discriminator="kind"),
 ]
 
@@ -165,6 +178,9 @@ class Metrics(Contract):
             differences.append("Metric names differ.")
         for name in self.values.keys() & other.values.keys():
             first, second = self.values[name], other.values[name]
+            external = isinstance(first, ExternalMetric) or isinstance(second, ExternalMetric)
+            if external:
+                differences.append(f"External metric payload requires resolution: {name}")
             attributes = [
                 *Metric.model_fields,
                 "kind",
@@ -178,6 +194,8 @@ class Metrics(Contract):
                 "column_labels",
                 "columns",
             ]
+            if external:
+                attributes = list(Metric.model_fields)
             if any(
                 getattr(first, attribute, None) != getattr(second, attribute, None)
                 for attribute in attributes

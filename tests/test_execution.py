@@ -154,6 +154,71 @@ def test_module_entrypoint_uses_canonical_cache_models(
     assert api.pipeline_status(record.run_id, root=project, verify=True).state == "complete"
 
 
+def test_cached_external_metrics_remain_resolvable_without_original_run(project: Path) -> None:
+    from mlef import ArtifactSource, Metrics, resolve_metric
+    from mlef.metrics import ExternalMetric, Series
+
+    setup(project)
+    (project / "mlef.toml").write_text(
+        '[[steps]]\nname="history"\nscript="steps/history.py"\ncache=true\ncache_version="v1"\n'
+        '[[steps]]\nname="report"\nscript="steps/report.py"\ncache=true\n'
+        'bindings={history="history.series"}\n'
+    )
+    (project / "steps/history.py").write_text(
+        "from mlef import Artifact, ArtifactType, Output, Step\n"
+        "from mlef.metrics import Series\n"
+        'step = Step(name="history", outputs=[Output(name="series", '
+        'type=ArtifactType.FILE, format="application/json")])\n'
+        "with step.context() as context:\n"
+        '    path = context.output_path("series", "series.json")\n'
+        '    path.write_text(Series(definition="loss", index="epoch", '
+        "x=[1, 2], y=[0.5, 0.2]).model_dump_json())\n"
+        '    step.save([Artifact(name="series", type=ArtifactType.FILE, '
+        'format="application/json", path=path)], context=context)\n'
+    )
+    (project / "steps/report.py").write_text(
+        "from mlef import Artifact, ArtifactType, ExternalMetric, Input, Metrics, Output, Step\n"
+        'step = Step(name="report", inputs=[Input(name="history", type=ArtifactType.FILE)], '
+        'outputs=[Output(name="metrics", type=ArtifactType.METRICS, format="application/json")])\n'
+        "with step.context() as context:\n"
+        '    value = ExternalMetric(definition="loss", representation="series", '
+        'artifact=context.input_reference("history"), path="series.json")\n'
+        '    path = context.output_path("metrics", "metrics.json")\n'
+        '    path.write_text(Metrics(scope="validation", '
+        'values={"loss": value}).model_dump_json())\n'
+        '    step.save([Artifact(name="metrics", type=ArtifactType.METRICS, '
+        'format="application/json", path=path)], context=context)\n'
+    )
+    original = prepare(project)
+    cache_environment(project, original)
+    configure_cache(project, original)
+    process = subprocess.run(
+        [sys.executable, "-I", "-m", "mlef.execution", str(original)],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode == 0, process.stderr
+    finish_parent(original)
+    directory = prepare(project)
+    cache_environment(project, directory)
+    record = configure_cache(project, directory, candidate=read_pipeline(original).run_id)
+    assert all(attempt.reused_from is not None for attempt in record.attempts.values())
+    original.parents[1].rename(original.parents[1].with_name("removed-metric-source"))
+    assert execute_pipeline(project, directory) == 0
+    finish_parent(directory)
+    api.pipeline_status(record.run_id, root=project, verify=True)
+    path = attempt_directory(directory, "report") / "outputs/metrics/metrics.json"
+    external = Metrics.model_validate_json(path.read_text()).values["loss"]
+    assert isinstance(external, ExternalMetric)
+    resolved = resolve_metric(
+        external, ArtifactSource(directory=attempt_directory(directory, "history"), name="series")
+    )
+    assert isinstance(resolved, Series)
+    assert resolved.y == [0.5, 0.2]
+
+
 def test_captured_custom_codec_and_explicit_reuse(project: Path) -> None:
     setup(project)
     (project / "steps/ingest.py").write_text(

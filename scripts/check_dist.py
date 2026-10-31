@@ -57,6 +57,7 @@ def check(distribution: Path, temporary: Path) -> None:
             "from mlef import ArtifactCodec, ArtifactRegistry, CustomType; "
             "assert CustomType(name='example.payload', version=1).version == 1; "
             "assert callable(ArtifactRegistry.register); "
+            "from mlef import ExternalMetric, resolve_metric; assert callable(resolve_metric); "
             "from mlef.reuse import reuse_steps; assert callable(reuse_steps); "
             "sdk = capture_sdk(Path('.mlef/sdk')); "
             "assert sdk.pipeline_reuse; "

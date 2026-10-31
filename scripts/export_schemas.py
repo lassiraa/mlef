@@ -10,7 +10,7 @@ from mlef.comparison import Comparison
 from mlef.environment import Environment
 from mlef.evidence import Result
 from mlef.execution import CacheDecision, PipelineRecord, StepFingerprint
-from mlef.metrics import Metrics
+from mlef.metrics import ExternalMetric, Metrics
 from mlef.pipeline import PipelineDefinition, Step, ValidationReport
 from mlef.records import Experiment, RunRecord
 from mlef.sdk import StepResult
@@ -34,6 +34,7 @@ def main() -> None:
         ("tabular-bundle-v1", TabularBundle),
         ("tabular-cv-recipe-v1", CvRecipe),
         ("metrics-v1", Metrics),
+        ("external-metric-v1", ExternalMetric),
         ("step-v1", Step),
         ("step-result-v1", StepResult),
         ("pipeline-v1", PipelineDefinition),
