@@ -16,6 +16,7 @@ from .environment import SdkWheel, file_hash
 from .pipeline import Name, PipelineDefinition, Step, validate
 from .provenance import extract_source
 from .records import Contract, read_json, run_id
+from .role_evidence import validate_role_evidence
 from .sdk import (
     ArtifactSource,
     LocalContext,
@@ -265,16 +266,23 @@ def read_pipeline(directory: Path, *, verify: bool = False) -> PipelineRecord:
                 continue
             result = read_step(attempt_directory(directory, name))
             context = _context(directory, record, name)
-            expected = {
-                binding: read_step(source.directory).artifacts[source.name].producer
+            bound = {
+                binding: read_step(source.directory).artifacts[source.name]
                 for binding, source in context.inputs.items()
             }
+            expected = {binding: manifest.producer for binding, manifest in bound.items()}
             if (
                 result.step != context.step
                 or result.run_id != (record.attempts[name].reused_from or record.run_id)
                 or result.inputs != expected
             ):
                 raise ValueError("Completed step does not match its captured contract or wiring.")
+            validate_role_evidence(
+                attempt_directory(directory, name),
+                result.step,
+                result.artifacts,
+                bound,
+            )
             decision = record.attempts[name].cache
             if decision is not None:
                 from .cache import fingerprint

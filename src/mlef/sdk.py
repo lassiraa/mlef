@@ -29,6 +29,7 @@ from .locking import file_lock
 from .pipeline import Name, Step
 from .records import Contract, read_json
 from .records import run_id as validate_run_id
+from .role_evidence import validate_role_evidence
 
 
 class Artifact(Contract):
@@ -376,6 +377,7 @@ class LocalContext(Contract):
                 self._verify_inputs()
                 for name, manifest in self._artifacts.items():
                     _verify(self.directory.absolute() / "outputs" / name, manifest)
+                validate_role_evidence(self.directory, self._contract, self._artifacts, self._bound)
                 result = self._record("running" if self._entered or self._managed else "complete")
                 self._finished = True
                 self._saved = True
@@ -412,6 +414,7 @@ class LocalContext(Contract):
                 _output_names(self.directory.absolute(), set(self._artifacts))
                 for name, manifest in self._artifacts.items():
                     _verify(self.directory.absolute() / "outputs" / name, manifest)
+                validate_role_evidence(self.directory, self._contract, self._artifacts, self._bound)
                 self._record("running" if self._managed else "complete")
                 if not self._managed:
                     read_step(self.directory)
@@ -442,6 +445,7 @@ def finalize_managed(context: LocalContext) -> StepResult:
     if result.state != "running" or result.step != context.step or result.run_id != context.run_id:
         raise ValueError("Step did not save a pending result for its assigned context.")
     expected = {}
+    bound = {}
     declarations = {item.name: item for item in context.step.inputs}
     for name, source in context.inputs.items():
         manifest = read_step(source.directory).artifacts[source.name]
@@ -451,12 +455,14 @@ def finalize_managed(context: LocalContext) -> StepResult:
         ):
             raise ValueError("Input artifact does not match the captured declaration.")
         expected[name] = manifest.producer
+        bound[name] = manifest
         _verify(directory / "inputs" / name, manifest)
     if result.inputs != expected:
         raise ValueError("Step inputs do not match their assigned producers.")
     _output_names(directory, set(result.artifacts))
     for name, manifest in result.artifacts.items():
         _verify(directory / "outputs" / name, manifest)
+    validate_role_evidence(directory, result.step, result.artifacts, bound)
     result.state = "complete"
     result = StepResult.model_validate_json(result.model_dump_json())
     _write_result(directory, result)
