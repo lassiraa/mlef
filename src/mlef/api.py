@@ -10,7 +10,7 @@ from uuid import uuid4
 
 from pydantic import Field
 
-from . import comparison, recovery, storage
+from . import comparison, models, recovery, storage
 from .environment import file_hash
 from .events import Delivery, LogEvent
 from .evidence import Result, read_result
@@ -18,6 +18,7 @@ from .execution import PipelineRecord, read_pipeline, verify_source_archive
 from .inspection import RunMetrics
 from .inspection import run_metrics as _run_metrics
 from .limits import Limits
+from .models import ModelListing, ModelVersion
 from .pipeline import ValidationReport
 from .pipeline import validate as _validate
 from .project import initialize, project_root
@@ -34,6 +35,8 @@ from .transfers import RunTransfer, backend, fetch, publish
 __all__ = [
     "LogEvent",
     "MlefError",
+    "ModelListing",
+    "ModelVersion",
     "RunHistory",
     "RunListing",
     "RunMetrics",
@@ -45,11 +48,15 @@ __all__ = [
     "export_tabular_artifacts",
     "fetch_run",
     "get",
+    "get_model",
     "init",
+    "list_models",
     "list_runs",
+    "model_version",
     "pipeline_status",
     "publish_run",
     "recover",
+    "register_model",
     "run",
     "run_history",
     "run_metrics",
@@ -105,6 +112,38 @@ class RunHistory(RunListing):
     schema_version: Literal[1] = 1
     total: int
     next_offset: int | None
+
+
+@_translated
+def list_models(*, run_id: str | None = None, root: Path | str | None = None) -> ModelListing:
+    return models.list_models(project_root(root), run_id)
+
+
+@_translated
+def register_model(
+    identifier: str,
+    step: str,
+    output: str,
+    *,
+    name: str,
+    root: Path | str | None = None,
+) -> ModelVersion:
+    return models.register(project_root(root), identifier, step, output, name)
+
+
+@_translated
+def model_version(selector: str, *, root: Path | str | None = None) -> ModelVersion:
+    return models.show(project_root(root), selector)
+
+
+@_translated
+def get_model(
+    selector: str,
+    *,
+    output: Path | str,
+    root: Path | str | None = None,
+) -> Path:
+    return models.get(project_root(root), selector, Path(output))
 
 
 @_translated

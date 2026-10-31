@@ -28,7 +28,7 @@ from mlef.execution import (
     prepare_pipeline,
     read_pipeline,
 )
-from mlef.locking import run_lock
+from mlef.locking import file_lock, run_lock
 from mlef.pipeline import validate
 from mlef.project import initialize
 from mlef.provenance import capture, extract_source
@@ -756,6 +756,71 @@ def prepare(project: Path) -> Path:
     directory = run_dir / "artifacts/pipeline"
     prepare_pipeline(project, Path("mlef.toml"), directory, identifier, inputs.source_sha256, sdk)
     return directory
+
+
+def test_model_catalog_registration_and_retrieval(
+    project: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    setup(project)
+    for script in ("train", "evaluate"):
+        path = project / "steps" / f"{script}.py"
+        path.write_text(path.read_text().replace("ArtifactType.FILE", "ArtifactType.MODEL"))
+    path = project / "steps/train.py"
+    path.write_text(
+        "from mlef.artifacts import ModelMetadata\n"
+        + path.read_text().replace(
+            "path=path)",
+            'path=path, metadata=ModelMetadata(framework="constant", serialization="json"))',
+        )
+    )
+    directory = prepare(project)
+    assert execute_pipeline(project, directory) == 0
+    identifier = directory.parents[1].name
+    discovered = api.list_models(run_id=identifier)
+    assert len(discovered.artifacts) == 1
+    assert discovered.artifacts[0].output == "model"
+    with pytest.raises(api.MlefError, match="terminal run"):
+        api.register_model(identifier, "train", "model", name="baseline")
+    parent = read_run(directory.parents[1] / "run.json")
+    parent.state = "succeeded"
+    parent.finished_at = now()
+    parent.execution_exit_code = 0
+    save(directory.parents[1] / "run.json", parent)
+    version = api.register_model(identifier, "train", "model", name="baseline")
+    assert api.register_model(identifier, "train", "model", name="baseline") == version
+    selector = f"baseline@{version.version}"
+    assert api.model_version(selector) == version
+    assert api.list_models().versions == [version]
+    capsys.readouterr()
+    assert main(["models", "show", selector, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == version.model_dump(mode="json")
+    destination = api.get_model(selector, output=project / "retrieved-model")
+    assert (destination / "model.json").read_bytes() == (
+        attempt_directory(directory, "train") / "outputs/model/model.json"
+    ).read_bytes()
+    with pytest.raises(api.MlefError, match="already exists"):
+        api.get_model(selector, output=destination)
+    with run_lock(directory.parents[1]), pytest.raises(api.MlefError, match="active"):
+        api.register_model(identifier, "train", "model", name="baseline")
+    with (
+        file_lock(project / ".mlef/models/catalog.lock"),
+        pytest.raises(api.MlefError, match="active"),
+    ):
+        api.register_model(identifier, "train", "model", name="baseline")
+    with pytest.raises(api.MlefError, match="No completed typed model"):
+        api.register_model(identifier, "evaluate", "metrics", name="baseline")
+    with pytest.raises(api.MlefError):
+        api.register_model(identifier, "train", "model", name="../escape")
+    catalog_path = project / ".mlef/models/baseline" / f"{version.version}.json"
+    catalog_path.write_text("{}")
+    assert api.list_models().diagnostics
+    with pytest.raises(api.MlefError, match="Cannot read model version"):
+        api.model_version(selector)
+    model_path = attempt_directory(directory, "train") / "outputs/model/model.json"
+    model_path.write_text("{}")
+    with pytest.raises(api.MlefError, match="bytes or inventory changed"):
+        api.register_model(identifier, "train", "model", name="other")
 
 
 def test_offline_pipeline_metric_inspection(

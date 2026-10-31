@@ -55,6 +55,7 @@ Guides and reference
    pipelines
    script-artifacts
    runs
+   models
    storage
    benchmarks
    development
