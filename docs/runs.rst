@@ -15,8 +15,11 @@ Namespaced history queries provide bounded offline inspection:
     mlef runs show RUN --json
     mlef runs steps RUN --json
 
-History JSON is a versioned envelope containing ``runs``, ``diagnostics``,
+History JSON version 2 is an envelope containing ``runs``, ``diagnostics``,
 ``total`` matching records and ``next_offset`` (null on the final page).
+Its ``annotations`` map contains the editable labels for each run on the page,
+including default empty annotations for older runs. The published
+``run-history-v1`` schema is retained; new queries return ``run-history-v2``.
 Results are newest first with run ID as a stable tie breaker. Offsets apply
 after filtering; concurrent new runs can shift pages. ``--since`` is inclusive
 and requires a timezone offset. Limits are 1 through 1000, defaulting to 50.
@@ -24,6 +27,71 @@ and requires a timezone offset. Limits are 1 through 1000, defaulting to 50.
 pipeline record and requires a captured pipeline run. Queries never start Docker.
 Python callers use ``api.run_history`` with the same filters and pagination.
 The existing ``list`` JSON array and ``status`` response remain unchanged.
+
+Experiment groups and editable run annotations
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. code-block:: text
+
+    mlef experiments create "Churn models" --description "Validation study"
+    mlef experiments list --json
+    mlef run train.py --experiment-name "Churn models" --name baseline --tag family=linear
+    mlef runs list --experiment "Churn models" --tag family=linear --json
+    mlef runs annotate RUN --note "Reviewed" --tag reviewed=yes
+    mlef runs annotations RUN --json
+    mlef experiments show "Churn models" --limit 20 --json
+    mlef runs annotate RUN --archive
+    mlef runs list --include-archived
+    mlef runs annotate RUN --unarchive --remove-tag reviewed --clear-note
+
+Groups have a stable UUID and an exact, case-sensitive display name. Names can
+contain spaces and Unicode; catalog filenames are derived from name hashes for
+consistent filesystem behavior. Names must be trimmed, nonempty, free of control
+characters and at most 200 characters. Launching or annotating a run with a group
+name creates that group if needed. ``experiments create`` is idempotent and updates
+the description when one is explicitly supplied.
+
+``--experiment-name`` groups runs. The existing ``--experiment FILE`` separately
+captures immutable experiment intent such as hypotheses, seeds and parameters;
+its existing single-script restrictions still apply. Grouping works for scripts
+and pipelines. The Python ``api.run`` arguments are ``experiment_name``, ``name``,
+``tags`` and ``note``. Labels are applied when the worker allocates the run and
+remain available if preparation or execution fails.
+
+Use ``api.annotate_run`` for updates and ``api.run_annotations`` for inspection.
+Name, note and group fields are preserved when omitted. Use ``--clear-name``,
+``--clear-note`` and ``--clear-experiment`` (the corresponding API boolean flags)
+to clear them explicitly. Tags merge by key; remove keys with ``--remove-tag`` or
+``remove_tags``. Tags use distinct ``KEY=VALUE`` arguments. Keys start with an ASCII
+letter and use letters, digits, underscores, periods or hyphens, at most 64
+characters. Values are strings of at most 1000 characters, with at most 50 tags
+per run. Notes allow 20,000 characters. Setting and clearing the same field/tag in
+one update is rejected. The API uses ``archived=True``/``False`` to archive/unarchive.
+
+History filters ``experiment``, ``name`` and ``tags`` match exactly; all selected
+tag values must match. The CLI equivalents are ``--experiment``, ``--name`` and
+repeatable ``--tag``. Filters precede pagination. Archived runs are hidden from
+``runs list`` and experiment history by default; ``--include-archived`` exposes
+them. Archival never deletes bytes, changes execution state or blocks retrieval,
+reuse, model versions or direct run queries. Legacy ``mlef list`` still lists all
+saved run records. Corrupt annotation sidecars are skipped with diagnostics in
+namespaced history and remain explicit errors on annotation queries/updates.
+
+Annotations and groups live in project-local catalogs under
+``.mlef/annotations`` and ``.mlef/experiments``. Atomic writes and a metadata lock
+protect concurrent edits. The metadata lock is separate from run ownership, so
+users can annotate an active run without modifying its captured evidence. Busy
+metadata updates fail with ``metadata_busy`` instead of overwriting another edit.
+Queries create no catalog files, and older runs need no migration.
+
+These catalogs are mutable organization data and are not automatically included
+in run publish/fetch transfers. Fetching a run does not overwrite local labels.
+Editing labels does not alter source fingerprints, model identities or evaluation
+recipes. Group APIs are ``api.create_experiment``, ``api.list_experiments`` and
+``api.experiment_group``. ``api.experiment_details`` returns the same group and
+paged history envelope as ``experiments show``. Schemas include
+``experiment-group-v1``, ``experiment-listing-v1``, ``experiment-details-v1`` and
+``run-annotations-v1``.
 
 Inspect root and completed pipeline metric evidence together:
 

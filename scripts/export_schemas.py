@@ -4,7 +4,8 @@ import argparse
 import json
 from pathlib import Path
 
-from mlef.api import RunHistory
+from mlef.annotations import ExperimentGroup, ExperimentListing, RunAnnotations
+from mlef.api import ExperimentDetails, RunHistory, RunHistoryV1
 from mlef.artifacts import ArtifactManifest, CustomType
 from mlef.benchmark import HoldoutScore, TabularTrial
 from mlef.comparison import Comparison
@@ -34,7 +35,12 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1] / "schemas"
     root.mkdir(exist_ok=True)
     schemas = [
-        ("run-history-v1", RunHistory),
+        ("run-history-v1", RunHistoryV1),
+        ("run-history-v2", RunHistory),
+        ("run-annotations-v1", RunAnnotations),
+        ("experiment-group-v1", ExperimentGroup),
+        ("experiment-listing-v1", ExperimentListing),
+        ("experiment-details-v1", ExperimentDetails),
         ("run-metrics-v1", RunMetrics),
         ("model-version-v1", ModelVersion),
         ("model-listing-v1", ModelListing),
