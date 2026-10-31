@@ -13,6 +13,8 @@ from . import comparison, recovery, storage
 from .events import Delivery, LogEvent
 from .evidence import Result, read_result
 from .limits import Limits
+from .pipeline import ValidationReport
+from .pipeline import validate as _validate
 from .project import initialize, project_root
 from .records import Contract, RunRecord
 from .supervision import Request, supervise
@@ -38,6 +40,7 @@ __all__ = [
     "status",
     "tabular_diagnostics",
     "tabular_profile",
+    "validate",
 ]
 
 P = ParamSpec("P")
@@ -80,6 +83,13 @@ class RunStatus(RunRecord):
 class RunListing(Contract):
     runs: list[RunRecord]
     diagnostics: list[str]
+
+
+@_translated
+def validate(
+    definition: Path | str = "mlef.toml", *, root: Path | str | None = None
+) -> ValidationReport:
+    return _validate(project_root(root), Path(definition))
 
 
 @_translated

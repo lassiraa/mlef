@@ -52,6 +52,7 @@ Guides and reference
    tabular
    api
    artifacts
+   pipelines
    runs
    benchmarks
    development

@@ -11,6 +11,7 @@ from typing_extensions import override
 from . import __version__
 from .comparison import compare
 from .evidence import read_result
+from .pipeline import validate
 from .project import initialize, project_root
 from .recovery import recover
 from .runner import run
@@ -50,6 +51,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--version", action="version", version=f"mlef {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("init", help="Initialize local run storage in a Git project.")
+    validation = commands.add_parser("validate", help="Validate pipeline wiring without execution.")
+    validation.add_argument("definition", nargs="?", type=Path, default=Path("mlef.toml"))
+    validation.add_argument("--json", action="store_true")
     tabular = commands.add_parser(
         "tabular", help="Inspect actual saved tabular evaluation evidence."
     )
@@ -103,6 +107,15 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Only mlef run accepts script arguments after --.")
     try:
         root = project_root()
+        if args.command == "validate":
+            report = validate(root, args.definition)
+            if args.json:
+                print(report.model_dump_json())
+            else:
+                print(f"Pipeline: {report.status}")
+                for item in report.checks:
+                    print(f"{item.status}: {item.step or 'pipeline'}: {item.message}")
+            return {"verified": 0, "invalid": 1, "deferred": 3}[report.status]
         if args.command == "tabular":
             if args.tabular_command == "profile":
                 profile = read_profile(root, args.run_id)

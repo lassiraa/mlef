@@ -10,6 +10,7 @@ from mlef.comparison import Comparison
 from mlef.environment import Environment
 from mlef.evidence import Result
 from mlef.metrics import Metrics
+from mlef.pipeline import PipelineDefinition, Step, ValidationReport
 from mlef.records import Experiment, RunRecord
 from mlef.tabular import Evaluation as TabularEvaluation
 from mlef.tabular import Profile, Protocol
@@ -26,6 +27,9 @@ def main() -> None:
     for name, model in [
         ("artifact-v1", ArtifactManifest),
         ("metrics-v1", Metrics),
+        ("step-v1", Step),
+        ("pipeline-v1", PipelineDefinition),
+        ("pipeline-validation-v1", ValidationReport),
         ("run-v3", RunRecord),
         ("experiment-v1", Experiment),
         ("result-v1", Result),
