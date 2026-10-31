@@ -6,6 +6,25 @@ Run and CLI reference
 Commands
 --------
 
+Namespaced history queries provide bounded offline inspection:
+
+.. code-block:: text
+
+    mlef runs list --state succeeded --limit 50 --offset 0 --json
+    mlef runs list --since 2026-10-01T00:00:00Z
+    mlef runs show RUN --json
+    mlef runs steps RUN --json
+
+History JSON is a versioned envelope containing ``runs``, ``diagnostics``,
+``total`` matching records and ``next_offset`` (null on the final page).
+Results are newest first with run ID as a stable tie breaker. Offsets apply
+after filtering; concurrent new runs can shift pages. ``--since`` is inclusive
+and requires a timezone offset. Limits are 1 through 1000, defaulting to 50.
+``runs show`` includes saved run/result evidence; ``runs steps`` returns the
+pipeline record and requires a captured pipeline run. Queries never start Docker.
+Python callers use ``api.run_history`` with the same filters and pagination.
+The existing ``list`` JSON array and ``status`` response remain unchanged.
+
 Run commands from the experiment's Git root. Replace RUN, BASELINE and CANDIDATE
 with complete UUID4 identifiers printed by MLEF. Use ``mlef COMMAND --help``
 for argument help.

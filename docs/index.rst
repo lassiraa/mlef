@@ -58,6 +58,7 @@ Guides and reference
    storage
    benchmarks
    development
+   platform-proposal
 
 `Source repository <https://github.com/lassiraa/mlef>`_ ·
 `Apache-2.0 license <https://github.com/lassiraa/mlef/blob/main/LICENSE>`_
