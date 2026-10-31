@@ -203,6 +203,8 @@ file and checksum; these models do not save or finalize it.
 * MetricTable: declared columns with matching flat rows, useful for slices/classes.
 * Distribution: samples with optional aligned nonnegative weights.
 * Undefined: a reason instead of NaN or an invented numeric score.
+* ExternalMetric: an immutable artifact/file reference to a separately stored
+  series, table or distribution, resolved only on an explicit request.
 
 All representations carry definition/version, unit, aggregation, sample count,
 parameters and dimensions. Direction can maximize, minimize, target a specified
@@ -212,13 +214,108 @@ Series/curve order is preserved; monotonicity is not universally required.
 
 Matching names does not establish comparability. Consumers must check definitions,
 versions, units, parameters, aggregation and evaluation references. Curves have no
-implicit scalar ranking. External storage for large metric arrays and streaming
-serializers remain follow-up work.
+implicit scalar ranking. Large series, tables and distributions can use the
+external representation below without expanding the main metrics JSON.
 
 ``Metrics.semantic_differences(other)`` checks declared scope, names, common
 scoring semantics and labelled axes without ranking measured values. It does
 not establish dataset/split compatibility or execution success; the tabular
 comparator separately validates those prerequisites.
+
+External metric payloads
+-------------------------
+
+``ExternalMetric`` keeps a large ``Series``, ``MetricTable`` or ``Distribution``
+in a separate artifact, while the main ``Metrics.values`` entry records only its
+common scoring semantics, representation, exact ``ArtifactRef`` and normalized
+relative inventory path. Its format is fixed to ``application/json`` and its
+descriptor has ``schema_version=1``. The referenced file contains one complete
+metric value's JSON, not a whole ``Metrics`` envelope, pickle, URL or another
+external reference. Scalar, curve and matrix values remain inline.
+
+Publish the payload using ordinary SDK output rules, then construct the reference
+from its completed producer. For example, in a fresh local attempt directory:
+
+.. code-block:: python
+
+    from pathlib import Path
+    from mlef import (
+        Artifact, ArtifactType, ExternalMetric, Metrics, Output, Step,
+        load_artifacts, read_step, resolve_metric,
+    )
+    from mlef.metrics import Series
+
+    history = Series(
+        definition="training_loss", direction="minimize",
+        index="epoch", x=[1, 2, 3], y=[0.8, 0.4, 0.2],
+    )
+    directory = Path(".mlef/history-attempt")
+    step = Step(name="history", outputs=[Output(
+        name="loss", type=ArtifactType.FILE, format="application/json",
+    )])
+    with step.local(directory) as context:
+        path = context.output_path("loss", "history.json")
+        path.write_text(history.model_dump_json(), encoding="utf-8")
+        step.save([Artifact(
+            name="loss", type=ArtifactType.FILE,
+            format="application/json", path=path,
+        )], context=context)
+
+    producer = read_step(directory).artifacts["loss"].producer
+    assert producer is not None
+    external = ExternalMetric(
+        definition="training_loss", direction="minimize",
+        representation="series", artifact=producer, path="history.json",
+    )
+    evidence = Metrics(scope="validation", values={"loss": external})
+    compact_json = evidence.model_dump_json()
+    source = load_artifacts(directory)["loss"]
+    resolved = resolve_metric(external, source)
+    assert isinstance(resolved, Series)
+    assert resolved.y == history.y
+
+In pipelines, write the large payload in an upstream step and declare/bind it as
+an input to the reporting step. ``context.input_reference(name)`` supplies its
+exact producer identity. This avoids a same-artifact self-reference. Persist the
+compact metrics JSON using the same SDK save path as other metrics. Consumers
+must explicitly supply an ``ArtifactSource`` containing the referenced payload;
+run IDs and paths in the descriptor do not trigger filesystem searches, imports,
+network requests or automatic S3 fetches.
+
+``resolve_metric`` first verifies the source's complete step record and artifact
+inventories, then requires the exact original producer reference, JSON format and
+declared file path. It reads at most the expected file size plus one byte and
+rechecks size/hash after that read. Duplicate keys, non-finite JSON values,
+excessive nesting, malformed shapes/weights, unsupported representations and
+recursive external references fail. All common metric fields must agree with the
+descriptor, including definition/version, unit, direction/target, aggregation,
+sample count, parameters and dimensions. There is no silent metadata override or
+fallback to a different source. Failed/incomplete attempts and corrupt bytes
+cannot supply payloads.
+
+JSON materialization defaults to a 32 MiB payload-byte limit. Callers can choose
+a positive integer limit explicitly, for example
+``resolve_metric(external, source, max_bytes=128 * 1024 * 1024)``. This is not a
+streaming reader, a hard process-memory limit or a total I/O quota: artifact
+verification streams the source inventory first, and decoded JSON/model objects
+can use more memory than the raw payload. Merely inspecting or transferring the
+descriptor never materializes its arrays.
+
+``Metrics.semantic_differences`` reports unresolved external values as requiring
+resolution, even when two descriptors share a reference. Resolve them explicitly
+and compare new envelopes containing the resolved values to check labelled axes
+and table columns. Neither descriptor equality nor matching metric names proves
+payload validity, shared evaluation scope or comparability. The tabular scalar
+comparator does not rank external values.
+
+Cache and explicit reuse preserve original producer references. A supplied source
+can therefore be a verified copied artifact rather than the producer's original
+directory. Pipelines that retain the payload output remain resolvable after the
+original run is removed. A descriptor alone does not package, retain, publish or
+fetch its targets: include the required artifacts in the run or transfer them
+separately. Run publication does not traverse arbitrary external references.
+Existing inline metric JSON and content identities are unchanged; older readers
+cannot parse the new ``external`` variant.
 
 Schemas
 -------
@@ -228,3 +325,5 @@ schemas/metrics-v1.schema.json expose structural
 contracts. Pydantic additionally enforces cross-field invariants such as matrix
 shape, required metadata and producer content identity. JSON Schema alone cannot
 establish those invariants.
+schemas/external-metric-v1.schema.json also exposes the standalone external
+descriptor, not its resolved payload or availability.

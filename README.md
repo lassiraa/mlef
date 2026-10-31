@@ -114,7 +114,7 @@ The documentation sources are linked below.
 | --- | --- |
 | [Setup](docs/setup.rst) | Installation, host vs experiment environments, troubleshooting |
 | [Tabular workflows](docs/tabular.rst) | sklearn/XGBoost, regression, refit and agent feedback |
-| [Artifact contracts](docs/artifacts.rst) | Versioned manifests, explicit custom codecs and structured metric evidence |
+| [Artifact contracts](docs/artifacts.rst) | Versioned manifests, custom codecs and inline/external metric evidence |
 | [Script pipelines](docs/pipelines.rst) | Captured execution, explicit reuse/resume and explainable opt-in caching |
 | [Script artifact SDK](docs/script-artifacts.rst) | Managed outputs, atomic saves and verified read-only input handoff |
 | [Python API](docs/api.rst) | Signatures, options, returns, errors and output callbacks |

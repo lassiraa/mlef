@@ -310,6 +310,139 @@
       "title": "Distribution",
       "type": "object"
     },
+    "ExternalMetric": {
+      "additionalProperties": false,
+      "description": "An explicit reference to a complete metric JSON payload in a saved artifact.",
+      "properties": {
+        "aggregation": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Aggregation"
+        },
+        "artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "definition": {
+          "minLength": 1,
+          "title": "Definition",
+          "type": "string"
+        },
+        "dimensions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Dimensions",
+          "type": "object"
+        },
+        "direction": {
+          "default": "none",
+          "enum": [
+            "maximize",
+            "minimize",
+            "target",
+            "none"
+          ],
+          "title": "Direction",
+          "type": "string"
+        },
+        "format": {
+          "const": "application/json",
+          "default": "application/json",
+          "title": "Format",
+          "type": "string"
+        },
+        "kind": {
+          "const": "external",
+          "default": "external",
+          "title": "Kind",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "representation": {
+          "enum": [
+            "series",
+            "table",
+            "distribution"
+          ],
+          "title": "Representation",
+          "type": "string"
+        },
+        "sample_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Count"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Target"
+        },
+        "unit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Unit"
+        },
+        "version": {
+          "default": "1",
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "definition",
+        "representation",
+        "artifact",
+        "path"
+      ],
+      "title": "ExternalMetric",
+      "type": "object"
+    },
     "Interval": {
       "additionalProperties": false,
       "properties": {
@@ -1035,6 +1168,7 @@
           "mapping": {
             "curve": "#/$defs/Curve",
             "distribution": "#/$defs/Distribution",
+            "external": "#/$defs/ExternalMetric",
             "matrix": "#/$defs/Matrix",
             "scalar": "#/$defs/Scalar",
             "series": "#/$defs/Series",
@@ -1064,6 +1198,9 @@
           },
           {
             "$ref": "#/$defs/Undefined"
+          },
+          {
+            "$ref": "#/$defs/ExternalMetric"
           }
         ]
       },
