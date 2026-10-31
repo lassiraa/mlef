@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from pydantic import Field, JsonValue, field_validator
 
-from .artifacts import ArtifactRef
+from .artifacts import ArtifactRef, ArtifactType
 from .cache import digest, source_identity
 from .environment import file_hash
 from .events import Delivery
@@ -55,6 +55,16 @@ class EvaluationItem(Contract):
     error: str | None = None
 
     _run_id = field_validator("run_id")(run_id)
+
+
+class EvaluationContext(Contract):
+    schema_version: Literal[1] = 1
+    batch_id: str
+    protocol_id: str = Field(pattern=r"^[a-f0-9]{64}$")
+    model: ModelVersion
+    spec: EvaluationSpec
+
+    _batch_id = field_validator("batch_id")(run_id)
 
 
 class EvaluationBatch(Contract):
@@ -241,10 +251,16 @@ def evaluate(
                     if (
                         report.status != "verified"
                         or report.contracts[spec.step].kind != "evaluate"
+                        or not any(
+                            item.name == spec.model_input
+                            and item.type == ArtifactType.MODEL
+                            and item.required
+                            for item in report.contracts[spec.step].inputs
+                        )
                     ):
                         raise ValueError(
-                            "Evaluation requires a valid typed evaluate step: "
-                            + report.model_dump_json()
+                            "Evaluation requires a typed evaluate step with a required model input "
+                            f"named {spec.model_input}: " + report.model_dump_json()
                         )
                     candidate_inputs = inputs.model_copy(
                         deep=True,
@@ -266,13 +282,12 @@ def evaluate(
                         git=git,
                         inputs=candidate_inputs,
                         sdk=sdk,
-                        evaluation={
-                            "schema_version": 1,
-                            "batch_id": identifier,
-                            "protocol_id": batch.protocol_id,
-                            "model": item.model.model_dump(mode="json"),
-                            "spec": spec.model_dump(mode="json"),
-                        },
+                        evaluation=EvaluationContext(
+                            batch_id=identifier,
+                            protocol_id=batch.protocol_id,
+                            model=item.model,
+                            spec=spec,
+                        ).model_dump(mode="json"),
                         patch_sha256=file_hash(target / "changes.patch"),
                     ),
                 )
@@ -313,6 +328,13 @@ def evaluate(
                         evidence = api.run_metrics(item.run_id, root=root, step=spec.step).artifacts
                         if not evidence:
                             raise ValueError("Evaluation produced no structured metrics.")
+                        if any(
+                            artifact.metrics.model != item.model.artifact.manifest.producer
+                            for artifact in evidence
+                        ):
+                            raise ValueError(
+                                "Evaluation metrics identify a different selected model."
+                            )
                         item.metric_artifacts = [artifact.producer for artifact in evidence]
                         for artifact in evidence:
                             scalars = {

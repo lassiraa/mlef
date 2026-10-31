@@ -12,6 +12,7 @@ from pydantic import Field
 
 from . import comparison, models, recovery, storage
 from .environment import file_hash
+from .evaluation_comparison import EvaluationComparison
 from .evaluations import EvaluationBatch, EvaluationListing
 from .events import Delivery, LogEvent
 from .evidence import Result, read_result
@@ -35,6 +36,7 @@ from .transfers import RunTransfer, backend, fetch, publish
 
 __all__ = [
     "EvaluationBatch",
+    "EvaluationComparison",
     "EvaluationListing",
     "LogEvent",
     "MlefError",
@@ -47,9 +49,11 @@ __all__ = [
     "RunStatus",
     "artifacts",
     "compare",
+    "compare_evaluations",
     "compare_tabular",
     "evaluate",
     "evaluation_batch",
+    "evaluation_leaderboard",
     "export_tabular_artifacts",
     "fetch_run",
     "get",
@@ -143,6 +147,45 @@ def evaluation_batch(identifier: str, *, root: Path | str | None = None) -> Eval
     from .evaluations import show
 
     return show(project_root(root), identifier)
+
+
+@_translated
+def compare_evaluations(
+    identifiers: list[str],
+    *,
+    baseline: str,
+    metric: str,
+    scope: str | None = None,
+    output: str | None = None,
+    root: Path | str | None = None,
+) -> EvaluationComparison:
+    from .evaluation_comparison import compare
+
+    return compare(
+        project_root(root),
+        identifiers,
+        baseline=baseline,
+        metric=metric,
+        scope=scope,
+        output=output,
+    )
+
+
+@_translated
+def evaluation_leaderboard(
+    batch_id: str,
+    *,
+    baseline: str,
+    metric: str,
+    scope: str | None = None,
+    output: str | None = None,
+    root: Path | str | None = None,
+) -> EvaluationComparison:
+    from .evaluation_comparison import leaderboard
+
+    return leaderboard(
+        project_root(root), batch_id, baseline=baseline, metric=metric, scope=scope, output=output
+    )
 
 
 @_translated

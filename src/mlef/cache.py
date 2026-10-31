@@ -27,10 +27,12 @@ def digest(value: object) -> str:
     return hashlib.sha256(content).hexdigest()
 
 
-def source_identity(archive: Path) -> str:
+def source_identity(archive: Path, *, exclude: set[str] | None = None) -> str:
     inventory = []
     with tarfile.open(_checked(archive.absolute()), "r:gz") as stream:
         for member in sorted(stream.getmembers(), key=lambda item: item.name):
+            if exclude is not None and member.name in exclude:
+                continue
             safe_path(member.name.rstrip("/"))
             if not (member.isfile() or member.isdir()):
                 raise ValueError("Cache sources require ordinary captured files/directories.")

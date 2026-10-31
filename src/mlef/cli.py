@@ -72,6 +72,17 @@ def main(argv: list[str] | None = None) -> int:
     evaluation_show = evaluation_commands.add_parser("show")
     evaluation_show.add_argument("batch_id")
     evaluation_show.add_argument("--json", action="store_true")
+    for name in ["compare", "leaderboard"]:
+        comparison = evaluation_commands.add_parser(name)
+        if name == "compare":
+            comparison.add_argument("run_ids", nargs="+")
+        else:
+            comparison.add_argument("--batch", required=True)
+        comparison.add_argument("--baseline", required=True)
+        comparison.add_argument("--metric", required=True)
+        comparison.add_argument("--scope")
+        comparison.add_argument("--output", help="Qualify the metrics artifact output name.")
+        comparison.add_argument("--json", action="store_true")
     model_parser = commands.add_parser(
         "models", help="Discover and register saved model artifacts."
     )
@@ -217,6 +228,39 @@ def main(argv: list[str] | None = None) -> int:
                         0 if batch.state == "complete" else 130 if batch.state == "cancelled" else 1
                     )
                 if args.command == "evaluations":
+                    if args.evaluations_command in {"compare", "leaderboard"}:
+                        report = (
+                            api.compare_evaluations(
+                                args.run_ids,
+                                root=root,
+                                baseline=args.baseline,
+                                metric=args.metric,
+                                scope=args.scope,
+                                output=args.output,
+                            )
+                            if args.evaluations_command == "compare"
+                            else api.evaluation_leaderboard(
+                                args.batch,
+                                root=root,
+                                baseline=args.baseline,
+                                metric=args.metric,
+                                scope=args.scope,
+                                output=args.output,
+                            )
+                        )
+                        if args.json:
+                            print(report.model_dump_json())
+                        else:
+                            print(f"Metric: {report.metric}; baseline: {report.baseline_id}")
+                            for row in report.rows:
+                                print(
+                                    f"{row.rank or '-'}  {row.run_id}  {row.model or '?'}  "
+                                    f"value={row.value}  delta={row.delta}  "
+                                    f"{row.compatibility}  {row.observation}"
+                                )
+                                for reason in row.reasons:
+                                    print(f"  {reason}")
+                        return 0
                     if args.evaluations_command == "list":
                         batches = api.list_evaluations(
                             root=root, model=args.model, limit=args.limit, offset=args.offset

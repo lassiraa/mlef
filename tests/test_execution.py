@@ -764,21 +764,39 @@ def prepare(project: Path) -> Path:
     return directory
 
 
-@pytest.mark.parametrize("behavior", ["complete", "partial", "cancelled"])
+@pytest.mark.parametrize(
+    ("behavior", "direction", "target"),
+    [
+        ("complete", "minimize", None),
+        ("complete", "maximize", None),
+        ("complete", "none", None),
+        ("complete", "target", 0.5),
+        ("complete", "target", 1.0),
+        ("partial", "minimize", None),
+        ("cancelled", "minimize", None),
+    ],
+)
 def test_frozen_evaluation_batches(
     project: Path,
     evaluation_project: Callable[[str], tuple[Path, list[str]]],
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
     behavior: str,
+    direction: str,
+    target: float | None,
 ) -> None:
     original = prepare(project)
     assert execute_pipeline(project, original) == 0
     finish_parent(original)
     definition, selectors = evaluation_project(original.parents[1].name)
+    original_evaluator = (project / "evaluate.py").read_text()
+    parameters = f'direction="{direction}"'
+    if target is not None:
+        parameters += f",target={target}"
     if behavior == "partial":
-        path = project / definition
-        path.write_text("parameters={fail_baseline=true}\n" + path.read_text())
+        parameters += ",fail_baseline=true"
+    path = project / definition
+    path.write_text("parameters={" + parameters + "}\n" + path.read_text())
     calls = []
 
     def execute(request: supervision.Request, delivery: Delivery) -> int:
@@ -818,6 +836,7 @@ def test_frozen_evaluation_batches(
         if code != 0:
             parent.error = RunError(category="execution", message="candidate failed")
         save(target / "run.json", parent)
+        cache_environment(project, pipeline)
         # Both children must use the frozen evaluator despite edits between runs.
         (project / "evaluate.py").write_text("raise RuntimeError('live edit')")
         return code
@@ -845,21 +864,165 @@ def test_frozen_evaluation_batches(
     capsys.readouterr()
     assert main(["evaluations", "show", batch.id, "--json"]) == 0
     assert json.loads(capsys.readouterr().out) == batch.model_dump(mode="json")
-    monkeypatch.setattr(api, "evaluate", lambda *args, **kwargs: batch)
-    assert (
-        main(["evaluate", str(definition), "--model", selectors[0], "--json"])
-        == {
-            "complete": 0,
-            "partial": 1,
-            "cancelled": 130,
-        }[behavior]
-    )
-    assert json.loads(capsys.readouterr().out) == batch.model_dump(mode="json")
+    with monkeypatch.context() as patch:
+        patch.setattr(api, "evaluate", lambda *args, **kwargs: batch)
+        assert (
+            main(["evaluate", str(definition), "--model", selectors[0], "--json"])
+            == {
+                "complete": 0,
+                "partial": 1,
+                "cancelled": 130,
+            }[behavior]
+        )
+        assert json.loads(capsys.readouterr().out) == batch.model_dump(mode="json")
     if behavior == "complete":
+        identifiers = [item.run_id for item in batch.evaluations]
+        report = api.compare_evaluations(
+            identifiers, baseline=identifiers[0], metric="mae", scope="test"
+        )
+        assert all(row.compatibility == "declared-compatible" for row in report.rows), (
+            report.model_dump_json()
+        )
+        assert report.rows[1].delta == -1
+        expected = (
+            "unavailable"
+            if direction == "none"
+            else "improved"
+            if direction == "minimize"
+            else "unchanged"
+            if target == 0.5
+            else "regressed"
+        )
+        assert report.rows[1].observation == expected
+        assert report.rows[1].rank == (
+            None if direction == "none" else 2 if expected == "regressed" else 1
+        )
+        table = api.evaluation_leaderboard(batch.id, baseline=identifiers[0], metric="mae")
+        assert table.rows[0].rank == (None if direction == "none" else 1)
+        zero_baseline = api.compare_evaluations(identifiers, baseline=identifiers[1], metric="mae")
+        assert zero_baseline.rows[0].relative_delta is None
+        curves = api.compare_evaluations(identifiers, baseline=identifiers[0], metric="loss")
+        assert all(not row.eligible for row in curves.rows)
+        assert all(row.representation == "series" for row in curves.rows)
+        assert (
+            main(
+                [
+                    "evaluations",
+                    "compare",
+                    *identifiers,
+                    "--baseline",
+                    identifiers[0],
+                    "--metric",
+                    "mae",
+                    "--scope",
+                    "test",
+                    "--json",
+                ]
+            )
+            == 0
+        )
+        assert json.loads(capsys.readouterr().out) == report.model_dump(mode="json")
+        if direction == "minimize":
+            environment_path = project / ".mlef/runs" / identifiers[1] / "environment.json"
+            saved_environment = environment_path.read_bytes()
+            environment = json.loads(saved_environment)
+            environment["container"]["python"] = "3.12.99"
+            environment_path.write_text(json.dumps(environment))
+            incompatible = api.compare_evaluations(
+                identifiers, baseline=identifiers[0], metric="mae"
+            )
+            assert incompatible.rows[1].compatibility == "incompatible"
+            assert incompatible.rows[1].rank is None
+            environment_path.write_bytes(saved_environment)
+            environment_path.unlink()
+            missing = api.compare_evaluations(identifiers, baseline=identifiers[0], metric="mae")
+            assert missing.rows[1].compatibility == "unknown"
+            assert missing.rows[1].value == 0
+            assert missing.rows[1].rank is None
+            environment_path.write_bytes(saved_environment)
+            context_path = environment_path.parent / "evaluation.json"
+            saved_context = context_path.read_bytes()
+            context = json.loads(saved_context)
+            context["protocol_id"] = "f" * 64
+            context_path.write_text(json.dumps(context))
+            invalid = api.compare_evaluations(identifiers, baseline=identifiers[0], metric="mae")
+            assert invalid.rows[1].compatibility == "unknown"
+            assert invalid.rows[1].rank is None
+            context_path.write_bytes(saved_context)
+            (project / "evaluate.py").write_text(original_evaluator)
+            repeated_batch = api.evaluate(definition, selectors)
+            repeated = api.compare_evaluations(
+                [identifiers[0], repeated_batch.evaluations[0].run_id],
+                baseline=identifiers[0],
+                metric="mae",
+            )
+            assert repeated.rows[1].duplicate_of == identifiers[0]
+            assert repeated.rows[1].rank is None
+            (project / "evaluate.py").write_text(original_evaluator)
+            path.write_text(
+                path.read_text().replace("parameters={", "parameters={seed=43, duplicate=true, ", 1)
+            )
+            second = api.evaluate(definition, selectors)
+            assert second.state == "complete"
+            second_ids = [item.run_id for item in second.evaluations]
+            with pytest.raises(api.MlefError, match="ambiguous"):
+                api.compare_evaluations(second_ids, baseline=second_ids[0], metric="mae")
+            qualified = api.compare_evaluations(
+                second_ids, baseline=second_ids[0], metric="mae", scope="test"
+            )
+            assert all(row.eligible for row in qualified.rows)
+            mismatched = api.compare_evaluations(
+                [identifiers[0], second.evaluations[1].run_id],
+                baseline=identifiers[0],
+                metric="mae",
+                scope="test",
+            )
+            assert mismatched.rows[1].compatibility == "incompatible"
+            assert any("recipe" in reason for reason in mismatched.rows[1].reasons)
+            metric_path = (
+                environment_path.parent
+                / "artifacts/pipeline/steps/evaluate/1/outputs/metrics/metrics.json"
+            )
+            saved_metric = metric_path.read_bytes()
+            metric_path.write_text("{}")
+            corrupted = api.compare_evaluations(identifiers, baseline=identifiers[0], metric="mae")
+            assert corrupted.rows[1].compatibility == "unknown"
+            assert corrupted.rows[1].value is None
+            assert corrupted.rows[1].rank is None
+            metric_path.write_bytes(saved_metric)
+            (project / "evaluate.py").write_text(original_evaluator)
+            selected = api.model_version(selectors[0]).artifact
+            assert selected.manifest.producer is not None
+            path.write_text(
+                path.read_text().replace("parameters={", "parameters={use_aux=true, ", 1)
+                + "\n[bindings.aux]\nrun_id="
+                + json.dumps(selected.location_run_id)
+                + "\n[bindings.aux.artifact]\n"
+                + "\n".join(
+                    f"{key}={json.dumps(value)}"
+                    for key, value in selected.manifest.producer.model_dump().items()
+                )
+            )
+            wrong_model = api.evaluate(definition, selectors)
+            assert wrong_model.state == "partial"
+            assert wrong_model.evaluations[1].state == "failed"
+            assert "different selected model" in (wrong_model.evaluations[1].error or "")
         snapshot = project / ".mlef/evaluations" / batch.id / batch.evaluations[0].run_id
         (snapshot / "source.tar.gz").write_bytes(b"corrupt")
         with pytest.raises(ValueError, match="Frozen evaluation source"):
             restore(snapshot, project / ".mlef/changed-snapshot")
+    else:
+        identifiers = [item.run_id for item in batch.evaluations]
+        failed_baseline = api.evaluation_leaderboard(
+            batch.id, baseline=identifiers[0], metric="mae"
+        )
+        assert all(row.rank is None for row in failed_baseline.rows)
+        if behavior == "partial":
+            successful_baseline = api.evaluation_leaderboard(
+                batch.id, baseline=identifiers[1], metric="mae"
+            )
+            assert successful_baseline.rows[0].run_id == identifiers[1]
+            assert successful_baseline.rows[0].rank == 1
 
 
 @pytest.mark.parametrize("failure", [None, "checksum", "type", "active"])
