@@ -154,6 +154,56 @@ def test_module_entrypoint_uses_canonical_cache_models(
     assert api.pipeline_status(record.run_id, root=project, verify=True).state == "complete"
 
 
+def test_captured_custom_codec_and_explicit_reuse(project: Path) -> None:
+    setup(project)
+    (project / "steps/ingest.py").write_text(
+        "import json\n"
+        "from mlef import ArtifactCodec, ArtifactRegistry, CustomType, Output, Step\n"
+        'step = Step(name="ingest", outputs=[Output(name="data", '
+        'type=CustomType(name="example.observations", version=1), format="application/json")])\n'
+        "def serialize(value, path):\n"
+        "    path.write_text(json.dumps(value))\n"
+        "def validate(path):\n"
+        "    if not isinstance(json.loads(path.read_text()), list):\n"
+        '        raise ValueError("Expected observations.")\n'
+        "registry = ArtifactRegistry()\n"
+        'registry.register(ArtifactCodec(type=CustomType(name="example.observations", version=1), '
+        'format="application/json", serializer=serialize, validator=validate))\n'
+        "with step.context() as context:\n"
+        '    step.save([registry.artifact(name="data", '
+        'artifact_type=CustomType(name="example.observations", version=1), '
+        'media_format="application/json", value=[1, 2, 3, 4, 5, 6], '
+        'path=context.output_path("data", "data.json"))], context=context)\n'
+    )
+    script = project / "steps/split.py"
+    script.write_text(
+        script.read_text()
+        .replace("from mlef import ", "from mlef import CustomType, ")
+        .replace(
+            "type=ArtifactType.FILE", 'type=CustomType(name="example.observations", version=1)'
+        )
+    )
+    original = prepare(project)
+    cache_environment(project, original)
+    configure_cache(project, original)
+    process = subprocess.run(
+        [sys.executable, "-I", "-m", "mlef.execution", str(original)],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode == 0, process.stderr
+    finish_parent(original)
+    previous = read_pipeline(original, verify=True)
+    fork = prepare(project)
+    record = reuse_steps(project, previous.run_id, fork, "train")
+    assert record.attempts["ingest"].reused_from == previous.run_id
+    assert execute_pipeline(project, fork) == 0
+    finish_parent(fork)
+    assert api.pipeline_status(record.run_id, root=project, verify=True).state == "complete"
+
+
 def test_forced_step_executes_and_invalidates_its_dependents(
     project: Path, cached_pipeline: Path
 ) -> None:

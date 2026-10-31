@@ -82,6 +82,11 @@ overwrite is permitted. For a directory serializer, allocate a non-existing chil
 path such as ``context.output_path("model", "bundle")``, not the pre-created output
 directory. No serializer dependency is installed or imported automatically.
 
+For versioned custom semantic types, :doc:`artifacts` documents ``CustomType``,
+``ArtifactCodec`` and the explicit ``ArtifactRegistry``. Registry-created artifacts
+run their serializer and validator through this same save/finalization path;
+ordinary reads never execute registered callbacks.
+
 Use ``with step.local(...) as context`` for failure-safe scope handling:
 
 * The initial ``step.json`` has state ``running`` and cannot supply reusable outputs.

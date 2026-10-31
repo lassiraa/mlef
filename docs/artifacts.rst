@@ -69,8 +69,100 @@ The type inventory covers files, directories, tables, datasets, splits,
 predictions, models, checkpoints, metrics, parameters, schemas, arrays,
 embeddings, indexes, plots, reports, text, images, audio, video, annotations,
 explanations and archives. Specialized metadata is required for datasets, splits,
-predictions and models. Other types use generic metadata; custom type registration
-and additional schemas are follow-up work.
+predictions and models. Other types use generic metadata. Custom types use the
+explicit versioned identities and codecs described below.
+
+Custom artifact codecs
+----------------------
+
+``CustomType(name="example.positive_integer", version=1)`` is a semantic type
+identity, usable wherever an ``ArtifactType`` is accepted: ``Input``, ``Output``,
+``Artifact`` and ``ArtifactManifest``. Names require a lowercase dotted namespace
+(letters, digits and underscores within components); versions are positive
+integers, not booleans. The identity is immutable. Built-in types keep their
+existing enum/string representation and content hashes.
+
+Custom identities serialize as objects containing ``schema_version``, ``name``
+and ``version``. Two custom types match only when their entire identities match;
+requested formats are checked separately. Custom artifacts currently use generic
+metadata, not one of the specialized built-in metadata kinds. Their type identity,
+format and file inventory all contribute to content identity.
+
+Use an explicit, process-local ``ArtifactRegistry`` for trusted serialization and
+semantic validation. Each ``ArtifactCodec`` registers one exact custom identity
+and format. Duplicate registration fails rather than replacing code. There is no
+global registry, plugin discovery, automatic package installation, dynamic import
+from manifests or fallback to a different version/format.
+
+.. code-block:: python
+
+    import json
+    from pathlib import Path
+    from mlef import ArtifactCodec, ArtifactRegistry, CustomType, Output, Step
+
+    identity = CustomType(name="example.positive_integer", version=1)
+    media_format = "application/json"
+
+    def serialize_integer(value: object, path: Path) -> None:
+        path.write_text(json.dumps(value), encoding="utf-8")
+
+    def validate_integer(path: Path) -> None:
+        value = json.loads(path.read_text(encoding="utf-8"))
+        if type(value) is not int or value <= 0:
+            raise ValueError("Expected a positive integer.")
+
+    codecs = ArtifactRegistry()
+    codecs.register(ArtifactCodec(
+        type=identity,
+        format=media_format,
+        serializer=serialize_integer,
+        validator=validate_integer,
+    ))
+    step = Step(name="produce", outputs=[Output(
+        name="data",
+        type=CustomType(name="example.positive_integer", version=1),
+        format="application/json",
+    )])
+    with step.local(Path(".mlef/positive-attempt")) as context:
+        step.save([codecs.artifact(
+            name="data",
+            artifact_type=identity,
+            media_format=media_format,
+            value=42,
+            path=context.output_path("data", "data.json"),
+        )], context=context)
+
+``registry.artifact`` returns an ordinary ``Artifact`` whose trusted serializer
+first writes the payload and then calls its validator. Validators return normally
+on success and raise on invalid payloads; returning false does not reject data.
+Callbacks receive the same file or directory path. The destination must not exist,
+and the normal SDK path, inventory, no-overwrite and failure-safe finalization
+rules still apply. A serialization/validation exception leaves partial diagnostic
+bytes in a failed attempt, never reusable output. Callback functions are not
+serialized. Bump the custom type version when its semantic contract or codec
+behavior changes incompatibly, and capture the codec source with the pipeline.
+
+Consumers declare the same custom identity and optionally the exact format.
+Inside a matching context they can explicitly revalidate a verified input copy:
+
+.. code-block:: python
+
+    codecs.validate_payload(identity, media_format,
+                            context.input_path("raw", "data.json"))
+
+``validate_payload`` requires a registered exact identity/format and an existing
+regular file or directory without symlinks/reparse points/hard links. It runs
+trusted user code; it is not a sandbox and does not independently compare a path
+against a producer manifest. Use verified SDK input paths when checking inputs.
+
+Ordinary inspection, transfer, cache selection and explicit reuse never execute
+custom codecs. They verify declared types, contracts and bytes, not custom payload
+semantics, and work without a registry. Likewise, constructing a plain ``Artifact``
+with a custom identity does not run a registered validator. Use
+``registry.artifact`` when producing and ``validate_payload`` when consuming if
+semantic validation is required. Registration is not an enforcement boundary.
+Older MLEF versions cannot read custom identity objects, but existing built-in
+artifact records and captured SDKs remain unchanged and readable.
 
 Metric evidence
 ---------------
@@ -131,7 +223,8 @@ comparator separately validates those prerequisites.
 Schemas
 -------
 
-schemas/artifact-v1.schema.json and schemas/metrics-v1.schema.json expose structural
+schemas/artifact-v1.schema.json, schemas/custom-type-v1.schema.json and
+schemas/metrics-v1.schema.json expose structural
 contracts. Pydantic additionally enforces cross-field invariants such as matrix
 shape, required metadata and producer content identity. JSON Schema alone cannot
 establish those invariants.

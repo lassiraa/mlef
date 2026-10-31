@@ -95,7 +95,15 @@
           "type": "integer"
         },
         "type": {
-          "$ref": "#/$defs/ArtifactType"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactType"
+            },
+            {
+              "$ref": "#/$defs/CustomType"
+            }
+          ],
+          "title": "Type"
         }
       },
       "required": [
@@ -240,6 +248,34 @@
         "distinct"
       ],
       "title": "ColumnStatistics",
+      "type": "object"
+    },
+    "CustomType": {
+      "additionalProperties": false,
+      "description": "A namespaced, versioned semantic identity, independent of executable codecs.",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "version": {
+          "exclusiveMinimum": 0,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "CustomType",
       "type": "object"
     },
     "DatasetMetadata": {
@@ -434,7 +470,15 @@
           "type": "boolean"
         },
         "type": {
-          "$ref": "#/$defs/ArtifactType"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactType"
+            },
+            {
+              "$ref": "#/$defs/CustomType"
+            }
+          ],
+          "title": "Type"
         }
       },
       "required": [
@@ -513,7 +557,15 @@
           "type": "boolean"
         },
         "type": {
-          "$ref": "#/$defs/ArtifactType"
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactType"
+            },
+            {
+              "$ref": "#/$defs/CustomType"
+            }
+          ],
+          "title": "Type"
         }
       },
       "required": [
