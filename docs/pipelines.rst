@@ -93,7 +93,8 @@ script's captured hash before launching it. Inputs are verified read-only copies
 from exact completed producers; absent optional outputs leave optional inputs
 unbound. Each step currently has one attempt. There is no parallel scheduler,
 automatic retry or implicit ingestion fallback. Artifact reuse is explicit, as
-described below.
+described below. Opt-in fingerprint caching is also available, without an implicit
+cache search or background service.
 
 A managed save stays pending even after a clean context exit. Only the runner
 publishes it after the **whole script process** exits successfully and required
@@ -146,7 +147,8 @@ contracts, script identities, output inventories and producer wiring. Reused
 steps must retain their declarations, direct script hash and input bindings.
 Changed downstream scripts are allowed in a fork. This is an explicit request to
 freeze selected outputs, not a claim that changed helpers or environments would
-produce identical outputs. There is no automatic cache or fallback to ingestion.
+produce identical outputs. This frontier does not perform fingerprint matching
+and never falls back to ingestion. Opt-in caching is a separate mode below.
 Missing, corrupt or incompatible reuse fails preparation instead of executing
 the step again. To rerun ingestion explicitly, select ``--from-step ingest``.
 
@@ -165,6 +167,97 @@ Python uses the same selection and validation:
 
     fork = api.run(reuse_from=previous.id, from_step="train")
     resumed = api.run(reuse_from=previous.id, from_step="train", resume=True)
+
+Explainable cache reuse
+-----------------------
+
+Cache reuse is opt-in per step and selects **one explicit local candidate run**.
+It does not scan runs, consult a global index, contact remote storage or bypass
+the environment build/probe. Declare deterministic steps in ``mlef.toml``:
+
+.. code-block:: toml
+
+    [[steps]]
+    name = "ingest"
+    script = "steps/ingest.py"
+    cache = true
+    cache_version = "immutable-public-data-v1"
+
+    [[steps]]
+    name = "train"
+    script = "steps/train.py"
+    bindings = { data = "ingest.data" }
+    parameters = { seed = 42 }
+    cache = true
+
+This fragment illustrates policy, not a replacement for the generated example's
+actual names/types. ``cache`` defaults to false. A step with no bound producers
+is considered mutable ingestion and also requires a nonempty ``cache_version``.
+That version is the caller's explicit assertion that external input is immutable;
+MLEF does not discover or validate remote data. Bump it when external data changes.
+Cacheable scripts must depend only on captured source, declared parameters,
+verified inputs and the captured environment. Do not opt in scripts that depend
+on wall-clock time, uncontrolled randomness, hidden environment variables, network
+state, undeclared files or cross-step workspace mutations. Cacheability is a
+promise by trusted code, not an automatic determinism proof.
+
+Declare policy before the first run to warm its fingerprints, then select it:
+
+.. code-block:: text
+
+    mlef run
+    mlef run --cache-from RUN
+    mlef run --cache-from RUN --force train
+    mlef cache NEW_RUN
+    mlef cache NEW_RUN --json
+
+.. code-block:: python
+
+    result = api.run(cache_from=previous.id, force=["train"])
+    pipeline = api.pipeline_status(result.id, verify=True)
+    print(pipeline.attempts["train"].cache)
+
+``--force STEP`` can be repeated and requires ``--cache-from``. Cache selection
+cannot be combined with ``--reuse-from``, ``--from-step`` or ``--resume`` and is
+not available for single-script runs. Forced steps run even on a matching key;
+their dependents also run because their new input bytes are not known yet.
+Independent matching branches may still be copied. Likewise, any mismatch or
+disabled upstream step conservatively invalidates downstream reuse; outputs are
+not speculatively compared after rerunning an upstream step.
+
+The runner captures a versioned fingerprint for executed steps after their
+upstream outputs exist. Components cover the **entire captured source tree's
+paths, bytes and modes** (not archive timestamps), direct script bytes, declared
+parameter JSON, exact input artifact content identities (including metadata and
+absent optional inputs), the SDK wheel SHA256, script/pipeline contracts and their
+versions. Environment identity includes immutable base/installer images, probed
+Python/platform/package versions, dependency file hashes, installation recipe
+and requested controls. The derived execution-image ID is deliberately not a
+replacement for these content identities.
+
+Source identity is deliberately conservative: editing any captured source,
+definition, helper, parameter declaration or dependency file can invalidate every
+step, even when the affected dependency is not used by that step. Use the explicit
+frontier mode when deliberately freezing upstream evidence across code edits.
+Changing only archive/file timestamps does not invalidate byte-identical source.
+
+``pipeline.json`` records the selected ``cache_from``, source/environment
+identities and every attempt's ``cache`` decision: action, human-readable reasons
+and component fingerprints when known. Reasons distinguish forced execution,
+disabled caching, unversioned ingestion, incomplete/historical candidates,
+upstream execution and individual changed components. Historical attempts without
+fingerprints are unknown/misses, never guessed hits. ``mlef cache`` verifies a
+terminal run and prints this evidence; its JSON output is the full versioned
+pipeline record. ``pipeline_status(..., verify=True)`` also checks saved source,
+environment and input fingerprints against their bytes.
+
+The chosen run must be terminal, cleanup-complete and verifiable under an
+ownership lock. Corruption fails preparation rather than silently recomputing.
+Hits copy and reverify outputs and preserve original producer references,
+including transitive hits. New runs do not depend on the candidate remaining
+available. There is no artifact deduplication, retention policy, garbage collector
+or automatic deletion. Captured SDKs without cache support retain their historical
+resume format; fork to the current SDK to use parameters or caching.
 
 Inspection and example
 ----------------------

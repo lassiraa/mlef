@@ -29,6 +29,51 @@
       "title": "ArtifactType",
       "type": "string"
     },
+    "CacheDecision": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "run",
+            "reused",
+            "explicit_reuse"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "fingerprint": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/StepFingerprint"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "reasons": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Reasons",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "action",
+        "reasons"
+      ],
+      "title": "CacheDecision",
+      "type": "object"
+    },
     "Input": {
       "additionalProperties": false,
       "properties": {
@@ -66,6 +111,7 @@
       "title": "Input",
       "type": "object"
     },
+    "JsonValue": {},
     "Output": {
       "additionalProperties": false,
       "properties": {
@@ -132,6 +178,24 @@
           "title": "Bindings",
           "type": "object"
         },
+        "cache": {
+          "default": false,
+          "title": "Cache",
+          "type": "boolean"
+        },
+        "cache_version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cache Version"
+        },
         "contract": {
           "anyOf": [
             {
@@ -148,6 +212,13 @@
           "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
           "title": "Name",
           "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
         },
         "script": {
           "title": "Script",
@@ -168,6 +239,11 @@
           "pattern": "^mlef-[A-Za-z0-9_.]+-py3-none-any\\.whl$",
           "title": "Filename",
           "type": "string"
+        },
+        "pipeline_cache": {
+          "default": false,
+          "title": "Pipeline Cache",
+          "type": "boolean"
         },
         "pipeline_reuse": {
           "default": false,
@@ -238,6 +314,17 @@
           "default": 1,
           "title": "Attempt",
           "type": "integer"
+        },
+        "cache": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CacheDecision"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "error": {
           "anyOf": [
@@ -329,6 +416,56 @@
       ],
       "title": "StepAttempt",
       "type": "object"
+    },
+    "StepFingerprint": {
+      "additionalProperties": false,
+      "properties": {
+        "contracts": {
+          "title": "Contracts",
+          "type": "string"
+        },
+        "environment": {
+          "title": "Environment",
+          "type": "string"
+        },
+        "inputs": {
+          "title": "Inputs",
+          "type": "string"
+        },
+        "parameters": {
+          "title": "Parameters",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "script": {
+          "title": "Script",
+          "type": "string"
+        },
+        "sdk": {
+          "title": "Sdk",
+          "type": "string"
+        },
+        "source": {
+          "title": "Source",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source",
+        "script",
+        "inputs",
+        "parameters",
+        "environment",
+        "sdk",
+        "contracts"
+      ],
+      "title": "StepFingerprint",
+      "type": "object"
     }
   },
   "additionalProperties": false,
@@ -341,6 +478,44 @@
       },
       "title": "Attempts",
       "type": "object"
+    },
+    "cache_environment": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cache Environment"
+    },
+    "cache_from": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cache From"
+    },
+    "cache_source": {
+      "anyOf": [
+        {
+          "pattern": "^[a-f0-9]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Cache Source"
     },
     "contracts": {
       "patternProperties": {

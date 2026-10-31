@@ -118,6 +118,11 @@
           "title": "Filename",
           "type": "string"
         },
+        "pipeline_cache": {
+          "default": false,
+          "title": "Pipeline Cache",
+          "type": "boolean"
+        },
         "pipeline_reuse": {
           "default": false,
           "title": "Pipeline Reuse",

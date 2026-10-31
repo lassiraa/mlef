@@ -31,12 +31,18 @@ The main SDK entry points are exported from ``mlef``:
     record = read_step(Path(".mlef/report-attempt"))
     assert record.state == "complete"
 
-``Step.local(directory, *, inputs=None, run_id=None)`` opens an explicit
+``Step.local(directory, *, inputs=None, run_id=None, parameters=None)`` opens an explicit
 ``LocalContext`` for a new attempt. It creates parent directories, but never
 overwrites an existing attempt directory. ``run_id`` is an optional canonical
 UUID4 string; by default each context generates its own ID. A caller coordinating
 several steps can supply one run ID. Paths become absolute when the context or
 input locator is constructed; later working-directory changes do not redirect it.
+
+``context.parameters`` contains explicit JSON-compatible parameters, defaulting
+to an empty dictionary. Captured pipelines supply each step's ``parameters`` from
+``mlef.toml``; local callers can pass them to ``Step.local``. They do not alter the
+script's structural ``Step`` declaration. Pipeline cache fingerprints include
+these values; see :doc:`pipelines` for cacheability requirements.
 
 ``context.output_path(name, relative=None)`` checks the declared output name,
 creates required directories and returns a managed ``Path``. With no relative

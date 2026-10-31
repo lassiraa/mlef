@@ -57,6 +57,7 @@ def check(distribution: Path, temporary: Path) -> None:
             "from mlef.reuse import reuse_steps; assert callable(reuse_steps); "
             "sdk = capture_sdk(Path('.mlef/sdk')); "
             "assert sdk.pipeline_reuse; "
+            "assert sdk.pipeline_cache; "
             "assert file_hash(Path('.mlef/sdk') / sdk.filename) == sdk.sha256; "
             "tabular.export_helper('evaluate.py'); assert 'sklearn' not in sys.modules; "
             "assert callable(api.compare_tabular); assert 'xgboost' not in sys.modules; "

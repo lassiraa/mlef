@@ -38,6 +38,8 @@ class Request(Contract):
     reuse_from: str | None = None
     from_step: str | None = None
     resume: bool = False
+    cache_from: str | None = None
+    force: list[str] = Field(default_factory=list)
 
 
 def identity(root: Path, identifier: str, token: str) -> Runtime:
@@ -289,6 +291,8 @@ def main() -> None:
             reuse_from=request.reuse_from,
             from_step=request.from_step,
             resume=request.resume,
+            cache_from=request.cache_from,
+            force=request.force,
             cpus=request.limits.cpus,
             memory=request.limits.memory_bytes,
             network=request.limits.network,

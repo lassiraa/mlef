@@ -8,6 +8,7 @@ import json
 import tomllib
 from pathlib import Path
 from typing import TYPE_CHECKING, Annotated, Literal, Self
+from uuid import uuid4
 
 from pydantic import Field, JsonValue, field_validator, model_validator
 
@@ -55,12 +56,16 @@ class Step(Contract):
         *,
         inputs: dict[str, ArtifactSource] | None = None,
         run_id: str | None = None,
+        parameters: dict[str, JsonValue] | None = None,
     ) -> LocalContext:
         from .sdk import LocalContext
 
-        arguments = {} if run_id is None else {"run_id": run_id}
         return LocalContext(
-            directory=directory, step=self, inputs=inputs or {}, **arguments
+            directory=directory,
+            step=self,
+            inputs=inputs or {},
+            run_id=run_id if run_id is not None else str(uuid4()),
+            parameters=parameters or {},
         ).prepare()
 
     def save(self, artifacts: list[Artifact], *, context: LocalContext) -> StepResult:
@@ -78,6 +83,9 @@ class PipelineStep(Contract):
     script: str
     contract: str | None = None
     bindings: dict[Name, str] = Field(default_factory=dict)
+    parameters: dict[str, JsonValue] = Field(default_factory=dict)
+    cache: bool = False
+    cache_version: str | None = Field(default=None, min_length=1)
 
     _paths = field_validator("script", "contract")(
         lambda value: safe_path(value) if value is not None else None

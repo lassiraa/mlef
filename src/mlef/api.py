@@ -163,6 +163,11 @@ def pipeline_status(
             ):
                 raise ValueError("Captured SDK wheel bytes changed.")
             verify_source_archive(run_dir / "source.tar.gz", record)
+            if record.cache_environment is not None:
+                from .cache import environment_identity
+
+                if record.cache_environment != environment_identity(run_dir):
+                    raise ValueError("Cache environment identity disagrees with saved evidence.")
         except (OSError, ValueError) as error:
             raise storage.QueryError("invalid_record", str(error)) from error
     return record
@@ -259,6 +264,8 @@ def run(
     reuse_from: str | None = None,
     from_step: str | None = None,
     resume: bool = False,
+    cache_from: str | None = None,
+    force: list[str] | None = None,
 ) -> RunStatus:
     resolved = project_root(root)
     options = options if options is not None else RunOptions()
@@ -283,6 +290,8 @@ def run(
         reuse_from=reuse_from,
         from_step=from_step,
         resume=resume,
+        cache_from=cache_from,
+        force=force or [],
     )
     result = supervise(request, delivery)
     if result == 2:

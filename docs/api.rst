@@ -109,6 +109,9 @@ shorthands, not exported types. Every ``root`` defaults to ``None``.
         options: RunOptions | None = None,
         on_output: Callable[[LogEvent], None] | None = None,
         callback_bytes: int = 65536,
+        reuse_from: str | None = None, from_step: str | None = None,
+        resume: bool = False, cache_from: str | None = None,
+        force: list[str] | None = None,
     ) -> RunStatus
     status(identifier: str, *, root: Root = None) -> RunStatus
     list_runs(*, root: Root = None) -> RunListing

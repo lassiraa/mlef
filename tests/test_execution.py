@@ -10,9 +10,17 @@ from uuid import uuid4
 
 import pytest
 
-from mlef import Metrics, Step, api, recovery, sdk_distribution, supervision
+from mlef import Artifact, Metrics, Step, api, recovery, sdk_distribution, supervision
+from mlef.cache import configure_cache, fingerprint
 from mlef.cli import main
-from mlef.environment import Environment, build_recipe, file_hash
+from mlef.environment import (
+    ContainerInfo,
+    Environment,
+    ImageIdentity,
+    build_recipe,
+    dependency_inputs,
+    file_hash,
+)
 from mlef.execution import (
     _save,
     attempt_directory,
@@ -31,6 +39,286 @@ from mlef.sdk import LocalContext, read_step
 from mlef.sdk_distribution import capture_sdk
 
 LOCKED = Path(__file__).resolve().parents[1] / "examples/pipeline"
+
+
+def cache_environment(project: Path, directory: Path, *, python: str = "3.12.0") -> None:
+    record = read_pipeline(directory)
+    run_dir = directory.parents[1]
+    parent = read_run(run_dir / "run.json")
+    assert parent.inputs is not None
+    parent.inputs.build_recipe_sha256 = "a" * 64
+    save(run_dir / "run.json", parent)
+    image = ImageIdentity(
+        id="sha256:test", digests=["test@sha256:immutable"], os="linux", architecture="amd64"
+    )
+    save(
+        run_dir / "environment.json",
+        Environment(
+            container=ContainerInfo(
+                os="linux",
+                architecture="amd64",
+                python=python,
+                os_release={"ID": "debian"},
+                packages={"mlef": record.sdk_wheel.version, "pydantic": "2"},
+                uv_version="0.13.6",
+            ),
+            base_image=image,
+            uv_image=image,
+            execution_image=image,
+            dependencies=dependency_inputs(project),
+            sdk_wheel=record.sdk_wheel,
+            warnings=[],
+        ).model_dump(),
+    )
+
+
+@pytest.fixture
+def cached_pipeline(project: Path) -> Path:
+    setup(project)
+    definition = project / "mlef.toml"
+    definition.write_text(
+        definition.read_text().replace(
+            "script = ", 'cache = true\ncache_version = "public-v1"\nscript = '
+        )
+    )
+    script = project / "steps/train.py"
+    script.write_text(
+        script.read_text().replace(
+            '"prediction": mean(values)',
+            '"prediction": mean(values) + context.parameters.get("offset", 0)',
+        )
+    )
+    directory = prepare(project)
+    cache_environment(project, directory)
+    configure_cache(project, directory)
+    assert execute_pipeline(project, directory) == 0
+    finish_parent(directory)
+    return directory
+
+
+def test_cache_hits_are_self_contained_and_explained(
+    project: Path,
+    cached_pipeline: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    previous = read_pipeline(cached_pipeline)
+    script = project / "steps/ingest.py"
+    timestamp = script.stat().st_mtime + 10
+    os.utime(script, (timestamp, timestamp))
+    directory = prepare(project)
+    cache_environment(project, directory)
+    record = configure_cache(project, directory, candidate=previous.run_id)
+    assert record.source_sha256 != previous.source_sha256
+    assert record.cache_source == previous.cache_source
+    assert all(attempt.reused_from == previous.run_id for attempt in record.attempts.values())
+    assert all(
+        attempt.cache is not None and attempt.cache.action == "reused"
+        for attempt in record.attempts.values()
+    )
+    cached_pipeline.parents[1].rename(cached_pipeline.parents[1].with_name("removed-cache-source"))
+    with monkeypatch.context() as context:
+        context.setattr(
+            "mlef.execution.subprocess.run", lambda *args, **kwargs: pytest.fail("reran")
+        )
+        assert execute_pipeline(project, directory) == 0
+    finish_parent(directory)
+    assert api.pipeline_status(record.run_id, root=project, verify=True).state == "complete"
+    capsys.readouterr()
+    assert main(["cache", record.run_id, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out)["cache_from"] == previous.run_id
+
+
+def test_forced_step_executes_and_invalidates_its_dependents(
+    project: Path, cached_pipeline: Path
+) -> None:
+    previous = read_pipeline(cached_pipeline)
+    directory = prepare(project)
+    cache_environment(project, directory)
+    record = configure_cache(project, directory, candidate=previous.run_id, force=["train"])
+    assert record.attempts["split"].reused_from == previous.run_id
+    assert record.attempts["train"].reused_from is None
+    assert record.attempts["evaluate"].reused_from is None
+    assert record.attempts["train"].cache is not None
+    assert "Forced" in " ".join(record.attempts["train"].cache.reasons)
+    assert execute_pipeline(project, directory) == 0
+    finish_parent(directory)
+    assert api.pipeline_status(record.run_id, root=project, verify=True).state == "complete"
+
+
+@pytest.mark.parametrize("change", ["source", "dependencies", "parameters", "environment", "sdk"])
+def test_cache_explains_fingerprint_invalidation(
+    project: Path, cached_pipeline: Path, change: str
+) -> None:
+    previous = read_pipeline(cached_pipeline)
+    if change == "source":
+        path = project / "steps/ingest.py"
+        path.write_text(path.read_text() + "\nprint('changed')\n")
+    elif change == "dependencies":
+        with (project / "uv.lock").open("a") as stream:
+            stream.write("\n# changed dependency evidence\n")
+    elif change == "parameters":
+        path = project / "mlef.toml"
+        path.write_text(
+            path.read_text().replace('name = "ingest"', 'name = "ingest"\nparameters = {seed = 42}')
+        )
+    directory = prepare(project)
+    if change == "sdk":
+        record = read_pipeline(directory)
+        path = directory.parents[1] / "sdk" / record.sdk_wheel.filename
+        path.write_bytes(path.read_bytes() + b"\n")
+        record.sdk_wheel.sha256 = file_hash(path)
+        _save(directory, record)
+    cache_environment(project, directory, python="3.13.0" if change == "environment" else "3.12.0")
+    record = configure_cache(project, directory, candidate=previous.run_id)
+    decision = record.attempts["ingest"].cache
+    assert decision is not None
+    assert decision.action == "run"
+    component = "source" if change == "dependencies" else change
+    assert f"Fingerprint changed: {component}." in decision.reasons
+    assert all(attempt.reused_from is None for attempt in record.attempts.values())
+
+
+def test_mutable_ingestion_does_not_hit_cache(project: Path, cached_pipeline: Path) -> None:
+    path = project / "mlef.toml"
+    path.write_text(path.read_text().replace('cache_version = "public-v1"\n', ""))
+    baseline = prepare(project)
+    cache_environment(project, baseline)
+    configure_cache(project, baseline)
+    assert execute_pipeline(project, baseline) == 0
+    finish_parent(baseline)
+    directory = prepare(project)
+    cache_environment(project, directory)
+    record = configure_cache(project, directory, candidate=read_pipeline(baseline).run_id)
+    decision = record.attempts["ingest"].cache
+    assert decision is not None
+    assert "Mutable ingestion" in " ".join(decision.reasons)
+    assert all(attempt.reused_from is None for attempt in record.attempts.values())
+
+
+def test_pipeline_parameters_reach_scripts_and_explicit_reuse_checks_them(
+    project: Path, cached_pipeline: Path
+) -> None:
+    previous = read_pipeline(cached_pipeline)
+    path = project / "mlef.toml"
+    path.write_text(
+        path.read_text().replace('name = "train"', 'name = "train"\nparameters = {offset = 10}')
+    )
+    directory = prepare(project)
+    cache_environment(project, directory)
+    configure_cache(project, directory, candidate=previous.run_id)
+    assert execute_pipeline(project, directory) == 0
+    model = attempt_directory(directory, "train") / "outputs/model/model.json"
+    original = attempt_directory(cached_pipeline, "train") / "outputs/model/model.json"
+    assert (
+        json.loads(model.read_text())["prediction"]
+        == json.loads(original.read_text())["prediction"] + 10
+    )
+    with pytest.raises(ValueError, match="incompatible"):
+        reuse_steps(project, previous.run_id, prepare(project), "evaluate")
+
+
+def test_cache_refuses_corrupt_candidate_and_forged_environment(
+    project: Path, cached_pipeline: Path
+) -> None:
+    previous = read_pipeline(cached_pipeline)
+    path = cached_pipeline.parents[1] / "environment.json"
+    environment = json.loads(path.read_text())
+    environment["container"]["python"] = "changed"
+    path.write_text(json.dumps(environment))
+    directory = prepare(project)
+    cache_environment(project, directory)
+    with pytest.raises(ValueError, match="environment identity"):
+        configure_cache(project, directory, candidate=previous.run_id)
+
+
+def test_disabled_cache_and_invalid_force_options(project: Path, cached_pipeline: Path) -> None:
+    previous = read_pipeline(cached_pipeline)
+    definition = project / "mlef.toml"
+    definition.write_text(definition.read_text().replace("cache = true", "cache = false"))
+    directory = prepare(project)
+    cache_environment(project, directory)
+    with pytest.raises(ValueError, match="known pipeline"):
+        configure_cache(project, directory, candidate=previous.run_id, force=["unknown"])
+    with pytest.raises(ValueError, match="requires a cache candidate"):
+        configure_cache(project, directory, force=["train"])
+    record = configure_cache(project, directory, candidate=previous.run_id)
+    assert record.attempts["ingest"].cache is not None
+    assert "Step caching is disabled." in record.attempts["ingest"].cache.reasons
+    with pytest.raises(ValueError, match="once"):
+        configure_cache(project, directory, candidate=previous.run_id)
+
+
+def test_input_bytes_change_fingerprints_independently_of_source(
+    project: Path, cached_pipeline: Path
+) -> None:
+    previous = read_pipeline(cached_pipeline)
+    directory = prepare(project)
+    cache_environment(project, directory)
+    record = configure_cache(project, directory)
+    step = record.contracts["ingest"]
+    with step.local(attempt_directory(directory, "ingest"), run_id=record.run_id) as context:
+        path = context.output_path("data", "data.json")
+        path.write_text("[100, 200, 300]")
+        step.save(
+            [
+                Artifact(
+                    name="data", type=step.outputs[0].type, format=step.outputs[0].format, path=path
+                )
+            ],
+            context=context,
+        )
+    record.attempts["ingest"].state = "complete"
+    record.attempts["ingest"].exit_code = 0
+    _save(directory, record)
+    current = fingerprint(directory, record, "split")
+    decision = previous.attempts["split"].cache
+    assert decision is not None
+    assert decision.fingerprint is not None
+    assert current.source == decision.fingerprint.source
+    assert current.inputs != decision.fingerprint.inputs
+
+
+def test_legacy_sdk_serialization_omits_cache_and_parameter_extensions(project: Path) -> None:
+    setup(project)
+    directory = prepare(project)
+    record = read_pipeline(directory)
+    record.sdk_wheel.pipeline_cache = False
+    record.cache_source = None
+    _save(directory, record)
+    values = json.loads((directory / "pipeline.json").read_text())
+    assert "cache_from" not in values
+    assert "cache" not in values["attempts"]["ingest"]
+    assert "pipeline_cache" not in values["sdk_wheel"]
+    assert "parameters" not in values["definition"]["steps"][0]
+    assert execute_pipeline(project, directory) == 0
+
+
+@pytest.mark.parametrize(
+    ("candidate", "reuse", "resume", "force"),
+    [
+        (None, None, False, ["train"]),
+        ("candidate", "other", False, []),
+        ("candidate", None, True, []),
+    ],
+)
+def test_runner_rejects_ambiguous_cache_options(
+    project: Path, candidate: str | None, reuse: str | None, resume: bool, force: list[str]
+) -> None:
+    with pytest.raises(ValueError, match="Cache/force"):
+        run(
+            project,
+            Path("mlef.toml"),
+            [],
+            [],
+            [],
+            cache_from=candidate,
+            reuse_from=reuse,
+            from_step="train" if reuse is not None else None,
+            resume=resume,
+            force=force,
+        )
+    assert not (project / ".mlef/runs").exists()
 
 
 def finish_parent(directory: Path) -> None:

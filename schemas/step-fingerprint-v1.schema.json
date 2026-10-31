@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "contracts": {
+      "title": "Contracts",
+      "type": "string"
+    },
+    "environment": {
+      "title": "Environment",
+      "type": "string"
+    },
+    "inputs": {
+      "title": "Inputs",
+      "type": "string"
+    },
+    "parameters": {
+      "title": "Parameters",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "script": {
+      "title": "Script",
+      "type": "string"
+    },
+    "sdk": {
+      "title": "Sdk",
+      "type": "string"
+    },
+    "source": {
+      "title": "Source",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source",
+    "script",
+    "inputs",
+    "parameters",
+    "environment",
+    "sdk",
+    "contracts"
+  ],
+  "title": "StepFingerprint",
+  "type": "object"
+}

@@ -25,6 +25,7 @@ def capture_sdk(directory: Path) -> SdkWheel:
         filename=f"mlef-{version}-py3-none-any.whl",
         sha256="0" * 64,
         pipeline_reuse=True,
+        pipeline_cache=True,
     )
     package = Path(__file__).parent
     contents = {}
