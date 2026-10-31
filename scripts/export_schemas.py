@@ -4,10 +4,12 @@ import argparse
 import json
 from pathlib import Path
 
+from mlef.artifacts import ArtifactManifest
 from mlef.benchmark import HoldoutScore, TabularTrial
 from mlef.comparison import Comparison
 from mlef.environment import Environment
 from mlef.evidence import Result
+from mlef.metrics import Metrics
 from mlef.records import Experiment, RunRecord
 from mlef.tabular import Evaluation as TabularEvaluation
 from mlef.tabular import Profile, Protocol
@@ -22,6 +24,8 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1] / "schemas"
     root.mkdir(exist_ok=True)
     for name, model in [
+        ("artifact-v1", ArtifactManifest),
+        ("metrics-v1", Metrics),
         ("run-v3", RunRecord),
         ("experiment-v1", Experiment),
         ("result-v1", Result),

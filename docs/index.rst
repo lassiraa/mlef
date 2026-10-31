@@ -51,6 +51,7 @@ Guides and reference
    setup
    tabular
    api
+   artifacts
    runs
    benchmarks
    development
