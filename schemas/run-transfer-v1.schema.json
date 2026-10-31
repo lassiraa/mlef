@@ -1,0 +1,66 @@
+{
+  "$defs": {
+    "ArtifactFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "size_bytes",
+        "sha256"
+      ],
+      "title": "ArtifactFile",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "directories": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 100000,
+      "title": "Directories",
+      "type": "array"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/ArtifactFile"
+      },
+      "maxItems": 100000,
+      "minItems": 1,
+      "title": "Files",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "run_id",
+    "files"
+  ],
+  "title": "RunTransfer",
+  "type": "object"
+}

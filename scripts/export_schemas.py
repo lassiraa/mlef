@@ -19,6 +19,7 @@ from mlef.tabular import Profile, Protocol
 from mlef.tabular_artifacts import CvRecipe, TabularBundle
 from mlef.tabular_comparison import TabularComparison
 from mlef.tabular_diagnostics import Diagnostics
+from mlef.transfers import RunTransfer
 
 
 def main() -> None:
@@ -38,6 +39,7 @@ def main() -> None:
         ("pipeline-validation-v1", ValidationReport),
         ("pipeline-run-v1", PipelineRecord),
         ("run-v3", RunRecord),
+        ("run-transfer-v1", RunTransfer),
         ("experiment-v1", Experiment),
         ("result-v1", Result),
         ("comparison-v1", Comparison),

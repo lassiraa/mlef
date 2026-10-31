@@ -12,6 +12,12 @@ The root ``mlef`` package also exports ``Step``, ``Input``, ``Output``, ``Artifa
 and the local persistence helpers documented in :doc:`script-artifacts`. Those
 explicit contexts are independent of the supervised ``api.run`` operations.
 
+``api.publish_run(identifier, destination, *, root=None)`` and
+``api.fetch_run(identifier, source, *, root=None)`` explicitly transfer whole
+terminal runs through local directories or ``s3://`` stores. They return a
+``RunTransfer`` manifest and use the same typed errors as other API operations.
+See :doc:`storage` for integrity, credentials, retries and privacy limitations.
+
 For supervised execution:
 
 .. code-block:: python

@@ -25,6 +25,8 @@ for argument help.
     mlef get RUN metrics.json --output saved-metrics.json
     mlef compare BASELINE CANDIDATE --json
     mlef recover RUN --json
+    mlef publish RUN --to s3://my-bucket/experiments --json
+    mlef fetch RUN --from s3://my-bucket/experiments --json
     mlef tabular compare BASELINE CANDIDATE --limit 20 --json
     mlef tabular profile RUN --json
     mlef tabular export RUN --data public.csv --output .mlef/shared/RUN --profile
@@ -33,6 +35,10 @@ for argument help.
 ``init`` also creates a :doc:`four-step example <pipelines>` when neither
 ``mlef.toml`` nor ``steps`` exists. Existing scaffold locations are left untouched.
 ``--storage-only`` creates only storage and its ignore entry.
+
+``publish`` / ``fetch`` explicitly transfer terminal runs through local directories
+or S3, with verified bytes and immutable publication. See :doc:`storage` for the
+optional host dependency, credentials, retries and privacy limitations.
 
 ``run`` without a path executes ``mlef.toml``; a ``.toml`` path selects another
 :doc:`captured script pipeline <pipelines>`. Pipeline definitions require a locked
