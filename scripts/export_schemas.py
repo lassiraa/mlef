@@ -9,7 +9,7 @@ from mlef.benchmark import HoldoutScore, TabularTrial
 from mlef.comparison import Comparison
 from mlef.environment import Environment
 from mlef.evidence import Result
-from mlef.execution import PipelineRecord
+from mlef.execution import CacheDecision, PipelineRecord, StepFingerprint
 from mlef.metrics import Metrics
 from mlef.pipeline import PipelineDefinition, Step, ValidationReport
 from mlef.records import Experiment, RunRecord
@@ -38,6 +38,8 @@ def main() -> None:
         ("pipeline-v1", PipelineDefinition),
         ("pipeline-validation-v1", ValidationReport),
         ("pipeline-run-v1", PipelineRecord),
+        ("step-fingerprint-v1", StepFingerprint),
+        ("cache-decision-v1", CacheDecision),
         ("run-v3", RunRecord),
         ("run-transfer-v1", RunTransfer),
         ("experiment-v1", Experiment),

@@ -27,6 +27,31 @@ from .sdk import (
 )
 
 
+class StepFingerprint(Contract):
+    schema_version: Literal[1] = 1
+    source: str
+    script: str
+    inputs: str
+    parameters: str
+    environment: str
+    sdk: str
+    contracts: str
+
+    @field_validator("source", "script", "inputs", "parameters", "environment", "sdk", "contracts")
+    @classmethod
+    def digest(cls, value: str) -> str:
+        if len(value) != 64 or any(character not in "0123456789abcdef" for character in value):
+            raise ValueError("Fingerprint components require SHA256 identities.")
+        return value
+
+
+class CacheDecision(Contract):
+    schema_version: Literal[1] = 1
+    action: Literal["run", "reused", "explicit_reuse"]
+    reasons: list[str] = Field(min_length=1)
+    fingerprint: StepFingerprint | None = None
+
+
 class StepAttempt(Contract):
     step: Name
     attempt: Literal[1] = 1
@@ -37,6 +62,7 @@ class StepAttempt(Contract):
     exit_code: int | None = None
     error: str | None = None
     reused_from: str | None = None
+    cache: CacheDecision | None = None
 
     _reused_from = field_validator("reused_from")(
         lambda value: run_id(value) if value is not None else None
@@ -58,10 +84,16 @@ class PipelineRecord(Contract):
     reuse_from: str | None = None
     from_step: Name | None = None
     resume: bool = False
+    cache_from: str | None = None
+    cache_source: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    cache_environment: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
     _run_id = field_validator("run_id")(run_id)
     _definition_path = field_validator("definition_path")(safe_path)
     _reuse_from = field_validator("reuse_from")(
+        lambda value: run_id(value) if value is not None else None
+    )
+    _cache_from = field_validator("cache_from")(
         lambda value: run_id(value) if value is not None else None
     )
 
@@ -78,13 +110,25 @@ class PipelineRecord(Contract):
         for name in names:
             attempt = self.attempts[name]
             if attempt.reused_from is not None and (
-                attempt.state != "complete" or self.reuse_from is None
+                attempt.state != "complete" or (self.reuse_from is None and self.cache_from is None)
             ):
                 raise ValueError("Reused attempts require completed, explicit reuse evidence.")
             if self.contracts[name].name != name or attempt.step != name:
                 raise ValueError("Pipeline step identities disagree.")
             if attempt.state == "complete" and attempt.exit_code != 0:
                 raise ValueError("A completed attempt requires a successful process exit.")
+            if (
+                self.cache_from is not None
+                and attempt.reused_from is not None
+                and (attempt.cache is None or attempt.cache.action != "reused")
+            ):
+                raise ValueError("Cached reuse requires an explicit cache decision.")
+            if (
+                attempt.cache is not None
+                and attempt.cache.action == "reused"
+                and (attempt.reused_from is None or attempt.cache.fingerprint is None)
+            ):
+                raise ValueError("Cache hits require verified fingerprints and original producers.")
         positions = {name: position for position, name in enumerate(self.order)}
         for entry in self.definition.steps:
             inputs = {item.name: item for item in self.contracts[entry.name].inputs}
@@ -117,6 +161,10 @@ class PipelineRecord(Contract):
             or (self.resume and self.reuse_from is None)
         ):
             raise ValueError("Reuse requires a source run and a known starting step.")
+        if self.cache_from is not None and (
+            self.reuse_from is not None or self.cache_environment is None
+        ):
+            raise ValueError("Cache selection requires environment evidence, not explicit reuse.")
         if (self.state in {"failed", "cancelled"}) != (self.error is not None):
             raise ValueError("Failed or cancelled pipelines require an error.")
         if self.from_step is not None:
@@ -148,7 +196,17 @@ def _save(directory: Path, record: PipelineRecord) -> None:
     record = PipelineRecord.model_validate_json(record.model_dump_json())
     directory = _checked(directory.absolute())
     _checked(directory / "pipeline.tmp")
-    save(_checked(directory / "pipeline.json"), record)
+    values = record.model_dump(mode="json")
+    if not record.sdk_wheel.pipeline_cache:
+        for name in ("cache_from", "cache_source", "cache_environment"):
+            values.pop(name)
+        values["sdk_wheel"].pop("pipeline_cache")
+        for attempt in values["attempts"].values():
+            attempt.pop("cache")
+        for entry in values["definition"]["steps"]:
+            for name in ("parameters", "cache", "cache_version"):
+                entry.pop(name)
+    save(_checked(directory / "pipeline.json"), values)
 
 
 def prepare_pipeline(
@@ -177,6 +235,12 @@ def prepare_pipeline(
             for entry in report.definition.steps
         },
     )
+    if sdk.pipeline_cache:
+        from .cache import source_identity
+
+        record.cache_source = source_identity(directory.parents[1] / "source.tar.gz")
+    elif any(entry.parameters for entry in record.definition.steps):
+        raise ValueError("Captured SDK does not support pipeline parameters; fork instead.")
     _checked(directory.absolute()).mkdir(parents=True, exist_ok=False)
     _save(directory, record)
     return record
@@ -199,6 +263,7 @@ def _context(directory: Path, record: PipelineRecord, name: str) -> LocalContext
         step=record.contracts[name],
         run_id=record.run_id,
         inputs=inputs,
+        parameters=entry.parameters,
     )
 
 
@@ -223,6 +288,13 @@ def read_pipeline(directory: Path, *, verify: bool = False) -> PipelineRecord:
                 or result.inputs != expected
             ):
                 raise ValueError("Completed step does not match its captured contract or wiring.")
+            decision = record.attempts[name].cache
+            if decision is not None:
+                from .cache import fingerprint
+
+                declared = decision.fingerprint
+                if declared is not None and declared != fingerprint(directory, record, name):
+                    raise ValueError("Cached step fingerprint disagrees with captured evidence.")
     return record
 
 
@@ -244,6 +316,11 @@ def verify_source_archive(archive: Path, record: PipelineRecord) -> None:
         for entry in record.definition.steps:
             if file_hash(workspace / entry.script) != record.attempts[entry.name].script_sha256:
                 raise ValueError("Step script identity disagrees with the captured source.")
+        if record.cache_source is not None:
+            from .cache import source_identity
+
+            if record.cache_source != source_identity(archive):
+                raise ValueError("Cache source identity disagrees with captured source bytes.")
 
 
 def interrupt_pipeline(directory: Path, message: str, *, cancelled: bool = False) -> None:
@@ -299,6 +376,13 @@ def execute_pipeline(workspace: Path, directory: Path) -> int:
                 print(f"Step {name}: reused from {attempt.reused_from}", flush=True)
                 continue
             attempt.state, attempt.started_at = "running", now()
+            if record.cache_environment is not None:
+                from .cache import fingerprint
+
+                evidence = fingerprint(directory, record, name)
+                if attempt.cache is None:
+                    attempt.cache = CacheDecision(action="run", reasons=["No cache candidate."])
+                attempt.cache.fingerprint = evidence
             _save(directory, record)
             script = workspace / entries[name].script
             if file_hash(script) != attempt.script_sha256:
@@ -347,4 +431,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    from . import execution
+
+    execution.main()

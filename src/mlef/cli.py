@@ -93,13 +93,15 @@ def main(argv: list[str] | None = None) -> int:
     execute.add_argument("--reuse-from", metavar="RUN_ID")
     execute.add_argument("--from-step", metavar="STEP")
     execute.add_argument("--resume", action="store_true")
+    execute.add_argument("--cache-from", metavar="RUN_ID")
+    execute.add_argument("--force", action="append", default=[], metavar="STEP")
     execute.add_argument("--timeout", type=float, metavar="SECONDS")
     execute.add_argument("--cpus", type=float)
     execute.add_argument("--memory")
     execute.add_argument("--network", choices=["default", "none"], default="default")
     execute.add_argument("--max-log-bytes", type=int)
     execute.add_argument("--max-runner-log-bytes", type=int)
-    for name in ["list", "status", "get", "compare", "recover"]:
+    for name in ["list", "status", "get", "compare", "recover", "cache"]:
         query = commands.add_parser(name, help=f"{name.capitalize()} saved local runs/artifacts.")
         if name == "compare":
             query.add_argument("baseline")
@@ -123,6 +125,21 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Only mlef run accepts script arguments after --.")
     try:
         root = project_root()
+        if args.command == "cache":
+            from .reuse import verify_source
+
+            record = verify_source(root, args.run_id)
+            if args.json:
+                print(record.model_dump_json())
+            else:
+                for name in record.order:
+                    decision = record.attempts[name].cache
+                    print(
+                        f"{name}: unknown (historical evidence)"
+                        if decision is None
+                        else f"{name}: {decision.action}: {' '.join(decision.reasons)}"
+                    )
+            return 0
         if args.command in {"publish", "fetch"}:
             from .transfers import backend, fetch, publish
 
@@ -282,6 +299,8 @@ def main(argv: list[str] | None = None) -> int:
             or args.reuse_from is not None
             or args.from_step is not None
             or args.resume
+            or args.cache_from is not None
+            or args.force
         ):
             return run(
                 root,
@@ -299,6 +318,8 @@ def main(argv: list[str] | None = None) -> int:
                 reuse_from=args.reuse_from,
                 from_step=args.from_step,
                 resume=args.resume,
+                cache_from=args.cache_from,
+                force=args.force,
             )
         if args.experiment is not None:
             return run(

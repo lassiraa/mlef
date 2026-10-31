@@ -18,6 +18,8 @@ for argument help.
     mlef run another-pipeline.toml --timeout 180
     mlef run --reuse-from RUN --from-step train
     mlef run --reuse-from RUN --from-step train --resume
+    mlef run --cache-from RUN --force train
+    mlef cache RUN --json
     mlef run train.py --include data.csv --output results -- --seed 7
     mlef list --json
     mlef status RUN --json

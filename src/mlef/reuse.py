@@ -7,7 +7,18 @@ from . import storage
 from .environment import file_hash
 from .execution import PipelineRecord, _save, attempt_directory, read_pipeline
 from .locking import run_lock
-from .sdk import _checked, read_step
+from .sdk import StepResult, _checked, read_step
+
+
+def copy_step(origin: Path, target: Path) -> StepResult:
+    result = read_step(origin)
+    target.mkdir(parents=True, exist_ok=False)
+    shutil.copyfile(_checked(origin / "step.json"), target / "step.json")
+    if (origin / "outputs").exists():
+        shutil.copytree(origin / "outputs", target / "outputs", symlinks=True)
+    if read_step(target) != result:
+        raise ValueError("Copied artifact evidence changed.")
+    return result
 
 
 def source_run(root: Path, identifier: str) -> Path:
@@ -72,6 +83,7 @@ def reuse_steps(
                 or previous.attempts[name].state != "complete"
                 or record.contracts[name] != previous.contracts[name]
                 or entries[name].bindings != old_entries[name].bindings
+                or entries[name].parameters != old_entries[name].parameters
                 or record.attempts[name].script_sha256 != previous.attempts[name].script_sha256
             ):
                 raise ValueError(f"Cannot reuse incomplete or incompatible step: {name}")
@@ -81,14 +93,7 @@ def reuse_steps(
         for name in selected:
             origin = attempt_directory(source / "artifacts/pipeline", name)
             target = attempt_directory(directory, name)
-            result = read_step(origin)
-            target.mkdir(parents=True, exist_ok=False)
-            shutil.copyfile(_checked(origin / "step.json"), target / "step.json")
-            if (origin / "outputs").exists():
-                shutil.copytree(origin / "outputs", target / "outputs", symlinks=True)
-            copied = read_step(target)
-            if copied != result:
-                raise ValueError(f"Copied artifact evidence changed: {name}")
+            copied = copy_step(origin, target)
             attempt = record.attempts[name]
             attempt.state, attempt.exit_code = "complete", 0
             attempt.reused_from = copied.run_id

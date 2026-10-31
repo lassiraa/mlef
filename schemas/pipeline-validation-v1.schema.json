@@ -66,6 +66,7 @@
       "title": "Input",
       "type": "object"
     },
+    "JsonValue": {},
     "Output": {
       "additionalProperties": false,
       "properties": {
@@ -132,6 +133,24 @@
           "title": "Bindings",
           "type": "object"
         },
+        "cache": {
+          "default": false,
+          "title": "Cache",
+          "type": "boolean"
+        },
+        "cache_version": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cache Version"
+        },
         "contract": {
           "anyOf": [
             {
@@ -148,6 +167,13 @@
           "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
           "title": "Name",
           "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
         },
         "script": {
           "title": "Script",

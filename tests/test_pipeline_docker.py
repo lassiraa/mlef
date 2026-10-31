@@ -30,6 +30,31 @@ def setup(project: Path) -> None:
         (project / name).write_bytes((LOCKED / name).read_bytes())
 
 
+def test_real_cache_hits_and_forced_dependent_execution(project: Path) -> None:
+    setup(project)
+    definition = project / "mlef.toml"
+    definition.write_text(
+        definition.read_text().replace(
+            "script = ", 'cache = true\ncache_version = "public-v1"\nscript = '
+        )
+    )
+    options = api.RunOptions(timeout_seconds=180)
+    original = api.run(root=project, options=options)
+    assert original.state == "succeeded"
+    cached = api.run(root=project, options=options, cache_from=original.id)
+    assert cached.state == "succeeded"
+    record = api.pipeline_status(cached.id, root=project, verify=True)
+    assert all(attempt.reused_from == original.id for attempt in record.attempts.values())
+    forced = api.run(root=project, options=options, cache_from=cached.id, force=["train"])
+    assert forced.state == "succeeded"
+    record = api.pipeline_status(forced.id, root=project, verify=True)
+    assert record.attempts["ingest"].reused_from == original.id
+    assert record.attempts["train"].reused_from is None
+    assert record.attempts["evaluate"].reused_from is None
+    assert record.attempts["train"].cache is not None
+    assert "Forced execution requested." in record.attempts["train"].cache.reasons
+
+
 @pytest.mark.parametrize("resume", [False, True])
 def test_real_explicit_reuse_and_captured_resume(project: Path, resume: bool) -> None:
     setup(project)

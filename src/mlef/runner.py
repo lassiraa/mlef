@@ -264,6 +264,8 @@ def run(
     reuse_from: str | None = None,
     from_step: str | None = None,
     resume: bool = False,
+    cache_from: str | None = None,
+    force: list[str] | None = None,
     _identifier: str | None = None,
     _token: str | None = None,
 ) -> int:
@@ -279,8 +281,19 @@ def run(
     script_budget = Budget(max_log_bytes)
     Budget(max_runner_log_bytes)
     pipeline = script.suffix == ".toml"
+    force = force or []
+    if (cache_from is not None and (not pipeline or reuse_from is not None or resume)) or (
+        force and cache_from is None
+    ):
+        raise ValueError(
+            "Cache/force options require a pipeline cache candidate, not explicit reuse."
+        )
     if (reuse_from is None) != (from_step is None) or (resume and reuse_from is None):
         raise ValueError("Use --reuse-from and --from-step together; --resume requires both.")
+    if cache_from is not None:
+        from .records import run_id as validate_run_id
+
+        validate_run_id(cache_from)
     if reuse_from is not None and not pipeline:
         raise ValueError("Artifact reuse is only supported for pipelines.")
     if resume and includes:
@@ -308,6 +321,8 @@ def run(
                 reuse_from=reuse_from,
                 from_step=from_step,
                 resume=resume,
+                cache_from=cache_from,
+                force=force,
             )
         )
     if not (root / ".mlef" / "runs").is_dir():
@@ -434,7 +449,7 @@ def run(
                         else:
                             environment.sdk_wheel = capture_sdk(run_dir / "sdk")
                         shutil.copytree(run_dir / "sdk", context / "sdk")
-                        prepare_pipeline(
+                        prepared = prepare_pipeline(
                             workspace,
                             script,
                             artifacts / "pipeline",
@@ -442,6 +457,8 @@ def run(
                             inputs.source_sha256,
                             environment.sdk_wheel,
                         )
+                        if set(force) - set(prepared.order):
+                            raise ValueError("Forced steps must name known pipeline steps.")
                         if reuse_from is not None:
                             from .reuse import reuse_steps
 
@@ -518,6 +535,15 @@ def run(
                 environment.warnings = []
                 warnings.clear()
                 save(run_dir / "environment.json", environment.model_dump())
+                if (
+                    pipeline
+                    and environment.sdk_wheel is not None
+                    and environment.sdk_wheel.pipeline_cache
+                ):
+                    from .cache import configure_cache
+
+                    stage("cache_selection")
+                    configure_cache(root, artifacts / "pipeline", candidate=cache_from, force=force)
                 create = [
                     "create",
                     "--name",

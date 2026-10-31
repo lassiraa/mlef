@@ -13,7 +13,7 @@ from types import TracebackType
 from typing import Literal, Self
 from uuid import uuid4
 
-from pydantic import ConfigDict, Field, PrivateAttr, field_validator, model_validator
+from pydantic import ConfigDict, Field, JsonValue, PrivateAttr, field_validator, model_validator
 
 from .artifacts import (
     ArtifactFile,
@@ -197,6 +197,7 @@ class LocalContext(Contract):
     step: Step
     run_id: str = Field(default_factory=lambda: str(uuid4()))
     inputs: dict[Name, ArtifactSource] = Field(default_factory=dict)
+    parameters: dict[str, JsonValue] = Field(default_factory=dict)
     _prepared: bool = PrivateAttr(default=False)
     _finished: bool = PrivateAttr(default=False)
     _entered: bool = PrivateAttr(default=False)
