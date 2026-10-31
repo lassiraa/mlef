@@ -169,6 +169,11 @@
           "title": "Filename",
           "type": "string"
         },
+        "pipeline_reuse": {
+          "default": false,
+          "title": "Pipeline Reuse",
+          "type": "boolean"
+        },
         "sha256": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Sha256",
@@ -270,6 +275,18 @@
           "default": null,
           "title": "Finished At"
         },
+        "reused_from": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reused From"
+        },
         "script_sha256": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Script Sha256",
@@ -353,6 +370,19 @@
       "default": null,
       "title": "Error"
     },
+    "from_step": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "From Step"
+    },
     "order": {
       "items": {
         "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
@@ -360,6 +390,23 @@
       },
       "title": "Order",
       "type": "array"
+    },
+    "resume": {
+      "default": false,
+      "title": "Resume",
+      "type": "boolean"
+    },
+    "reuse_from": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Reuse From"
     },
     "run_id": {
       "title": "Run Id",

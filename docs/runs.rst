@@ -16,6 +16,8 @@ for argument help.
     mlef init --storage-only
     mlef run
     mlef run another-pipeline.toml --timeout 180
+    mlef run --reuse-from RUN --from-step train
+    mlef run --reuse-from RUN --from-step train --resume
     mlef run train.py --include data.csv --output results -- --seed 7
     mlef list --json
     mlef status RUN --json
@@ -36,6 +38,12 @@ for argument help.
 experiment environment and scripts using ``step.context()``. Script arguments,
 ``--output`` and ``--experiment`` apply only to legacy single-script runs, not
 pipelines. Shared run limits and ``--include`` also apply to pipeline runs.
+Explicit ``--reuse-from RUN --from-step STEP`` copies verified completed attempts
+outside the selected step's downstream dependency frontier. Add ``--resume`` to
+retain the original source/SDK snapshot instead of capturing edited source;
+``--include`` is not accepted for resume. Both modes create a new run and require
+a terminal source run with no active owner or pending resource cleanup. See
+:doc:`pipelines` for compatibility checks and producer lineage semantics.
 
 Outputs, cancellation and limits
 --------------------------------

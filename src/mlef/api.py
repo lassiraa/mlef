@@ -224,6 +224,9 @@ def run(
     options: RunOptions | None = None,
     on_output: Callable[[LogEvent], None] | None = None,
     callback_bytes: int = 65536,
+    reuse_from: str | None = None,
+    from_step: str | None = None,
+    resume: bool = False,
 ) -> RunStatus:
     resolved = project_root(root)
     options = options if options is not None else RunOptions()
@@ -245,6 +248,9 @@ def run(
         max_log_bytes=options.max_log_bytes,
         max_runner_log_bytes=options.max_runner_log_bytes,
         quiet=True,
+        reuse_from=reuse_from,
+        from_step=from_step,
+        resume=resume,
     )
     result = supervise(request, delivery)
     if result == 2:

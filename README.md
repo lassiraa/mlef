@@ -42,6 +42,10 @@ as a captured Docker pipeline with `mlef run`. Pipelines require an existing
 locked experiment environment containing the SDK runtime dependencies; the runner
 installs and records its exact SDK wheel without resolving dependencies.
 `mlef run script.py` continues to run individual scripts as before.
+To edit training without rerunning ingestion, use
+`mlef run --reuse-from RUN --from-step train`: verified upstream outputs are
+copied into a self-contained new run with their original producer references.
+Add `--resume` to use the original captured source and SDK rather than live edits.
 
 ## What makes it useful?
 
@@ -110,7 +114,7 @@ The documentation sources are linked below.
 | [Setup](docs/setup.rst) | Installation, host vs experiment environments, troubleshooting |
 | [Tabular workflows](docs/tabular.rst) | sklearn/XGBoost, regression, refit and agent feedback |
 | [Artifact contracts](docs/artifacts.rst) | Versioned artifact manifests and structured metric evidence |
-| [Script pipelines](docs/pipelines.rst) | Scaffolding, static validation, captured execution and attempt records |
+| [Script pipelines](docs/pipelines.rst) | Scaffolding, validation, captured execution, explicit reuse and resume |
 | [Script artifact SDK](docs/script-artifacts.rst) | Managed outputs, atomic saves and verified read-only input handoff |
 | [Python API](docs/api.rst) | Signatures, options, returns, errors and output callbacks |
 | [Run and CLI reference](docs/runs.rst) | Commands, limits, provenance, retrieval and recovery |

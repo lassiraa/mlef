@@ -36,6 +36,11 @@ class StepAttempt(Contract):
     finished_at: str | None = None
     exit_code: int | None = None
     error: str | None = None
+    reused_from: str | None = None
+
+    _reused_from = field_validator("reused_from")(
+        lambda value: run_id(value) if value is not None else None
+    )
 
 
 class PipelineRecord(Contract):
@@ -50,9 +55,15 @@ class PipelineRecord(Contract):
     attempts: dict[Name, StepAttempt]
     state: Literal["preparing", "running", "complete", "failed", "cancelled"] = "preparing"
     error: str | None = None
+    reuse_from: str | None = None
+    from_step: Name | None = None
+    resume: bool = False
 
     _run_id = field_validator("run_id")(run_id)
     _definition_path = field_validator("definition_path")(safe_path)
+    _reuse_from = field_validator("reuse_from")(
+        lambda value: run_id(value) if value is not None else None
+    )
 
     @model_validator(mode="after")
     def consistent(self) -> Self:
@@ -66,6 +77,10 @@ class PipelineRecord(Contract):
             raise ValueError("Pipeline contracts, order and attempts must cover every step once.")
         for name in names:
             attempt = self.attempts[name]
+            if attempt.reused_from is not None and (
+                attempt.state != "complete" or self.reuse_from is None
+            ):
+                raise ValueError("Reused attempts require completed, explicit reuse evidence.")
             if self.contracts[name].name != name or attempt.step != name:
                 raise ValueError("Pipeline step identities disagree.")
             if attempt.state == "complete" and attempt.exit_code != 0:
@@ -96,9 +111,31 @@ class PipelineRecord(Contract):
             attempt.state != "complete" for attempt in self.attempts.values()
         ):
             raise ValueError("A complete pipeline requires every step to complete.")
+        if (
+            (self.reuse_from is None) != (self.from_step is None)
+            or (self.from_step is not None and self.from_step not in names)
+            or (self.resume and self.reuse_from is None)
+        ):
+            raise ValueError("Reuse requires a source run and a known starting step.")
         if (self.state in {"failed", "cancelled"}) != (self.error is not None):
             raise ValueError("Failed or cancelled pipelines require an error.")
+        if self.from_step is not None:
+            execute = self.execution_steps(self.from_step)
+            for name in self.order:
+                if (name not in execute) != (self.attempts[name].reused_from is not None):
+                    raise ValueError("Reused steps must match the selected dependency frontier.")
         return self
+
+    def execution_steps(self, from_step: str) -> set[str]:
+        if from_step not in self.order:
+            raise ValueError(f"Unknown starting step: {from_step}")
+        selected = {from_step}
+        entries = {entry.name: entry for entry in self.definition.steps}
+        for name in self.order:
+            entry = entries[name]
+            if any(reference.split(".")[0] in selected for reference in entry.bindings.values()):
+                selected.add(name)
+        return selected
 
 
 def attempt_directory(directory: Path, name: str) -> Path:
@@ -182,7 +219,7 @@ def read_pipeline(directory: Path, *, verify: bool = False) -> PipelineRecord:
             }
             if (
                 result.step != context.step
-                or result.run_id != record.run_id
+                or result.run_id != (record.attempts[name].reused_from or record.run_id)
                 or result.inputs != expected
             ):
                 raise ValueError("Completed step does not match its captured contract or wiring.")
@@ -257,6 +294,10 @@ def execute_pipeline(workspace: Path, directory: Path) -> int:
         entries = {entry.name: entry for entry in record.definition.steps}
         for name in record.order:
             attempt = record.attempts[name]
+            if attempt.reused_from is not None:
+                read_pipeline(directory, verify=True)
+                print(f"Step {name}: reused from {attempt.reused_from}", flush=True)
+                continue
             attempt.state, attempt.started_at = "running", now()
             _save(directory, record)
             script = workspace / entries[name].script

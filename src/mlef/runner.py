@@ -261,6 +261,9 @@ def run(
     max_log_bytes: int | None = None,
     max_runner_log_bytes: int | None = None,
     *,
+    reuse_from: str | None = None,
+    from_step: str | None = None,
+    resume: bool = False,
     _identifier: str | None = None,
     _token: str | None = None,
 ) -> int:
@@ -276,6 +279,12 @@ def run(
     script_budget = Budget(max_log_bytes)
     Budget(max_runner_log_bytes)
     pipeline = script.suffix == ".toml"
+    if (reuse_from is None) != (from_step is None) or (resume and reuse_from is None):
+        raise ValueError("Use --reuse-from and --from-step together; --resume requires both.")
+    if reuse_from is not None and not pipeline:
+        raise ValueError("Artifact reuse is only supported for pipelines.")
+    if resume and includes:
+        raise ValueError("Resume uses the captured snapshot and does not accept --include.")
     if pipeline and (arguments or outputs or experiment is not None):
         raise ValueError("Pipelines do not accept script arguments, --output or --experiment.")
     if _identifier is None and (
@@ -296,16 +305,24 @@ def run(
                 limits=limits,
                 max_log_bytes=max_log_bytes,
                 max_runner_log_bytes=max_runner_log_bytes,
+                reuse_from=reuse_from,
+                from_step=from_step,
+                resume=resume,
             )
         )
     if not (root / ".mlef" / "runs").is_dir():
         raise ValueError("Project is not initialized; run mlef init first.")
+    if resume:
+        from .reuse import verify_source
+
+        assert reuse_from is not None
+        script = Path(verify_source(root, reuse_from).definition_path)
     relative_path(root, script)
-    if not (root / script).is_file():
+    if not resume and not (root / script).is_file():
         raise ValueError(f"Script does not exist or is not a file: {script}")
     for output in outputs:
         relative_path(root, output)
-    if pipeline:
+    if pipeline and not resume:
         report = validate(root, script)
         if report.status != "verified" or report.definition is None:
             raise ValueError("Pipeline must validate before execution: " + report.model_dump_json())
@@ -318,7 +335,7 @@ def run(
                 if entry.contract is not None
             ),
         ]
-    files = source_files(root, script, includes)
+    files = source_files(root, script, includes) if not resume else []
     specification = experiment_spec(root, experiment) if experiment is not None else None
     run_id = _identifier if _identifier is not None else str(uuid4())
     run_dir = root / ".mlef" / "runs" / run_id
@@ -376,7 +393,20 @@ def run(
 
             try:
                 stage("source_capture")
-                git_provenance, inputs = capture(root, run_dir, files)
+                if resume:
+                    from . import storage
+                    from .reuse import copy_snapshot
+
+                    assert reuse_from is not None
+                    copy_snapshot(root, reuse_from, run_dir)
+                    original = storage.inspect(root, reuse_from)
+                    assert original.inputs is not None
+                    git_provenance = original.git
+                    inputs = original.inputs.model_copy(
+                        deep=True, update={"build_recipe_sha256": None, "dependency_hashes": {}}
+                    )
+                else:
+                    git_provenance, inputs = capture(root, run_dir, files)
                 metadata.git, metadata.inputs = git_provenance, inputs
                 inputs.outputs = metadata.outputs
                 save(run_dir / "run.json", metadata)
@@ -396,7 +426,13 @@ def run(
                                 "'typing-extensions>=4.12'."
                             )
                         stage("sdk_capture")
-                        environment.sdk_wheel = capture_sdk(run_dir / "sdk")
+                        if resume:
+                            from .reuse import verify_source
+
+                            assert reuse_from is not None
+                            environment.sdk_wheel = verify_source(root, reuse_from).sdk_wheel
+                        else:
+                            environment.sdk_wheel = capture_sdk(run_dir / "sdk")
                         shutil.copytree(run_dir / "sdk", context / "sdk")
                         prepare_pipeline(
                             workspace,
@@ -406,6 +442,13 @@ def run(
                             inputs.source_sha256,
                             environment.sdk_wheel,
                         )
+                        if reuse_from is not None:
+                            from .reuse import reuse_steps
+
+                            assert from_step is not None
+                            reuse_steps(
+                                root, reuse_from, artifacts / "pipeline", from_step, resume=resume
+                            )
                         stage("dependencies")
                     inputs.dependency_hashes = dependencies.hashes
                     save(run_dir / "run.json", metadata)

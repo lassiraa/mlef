@@ -30,6 +30,37 @@ def setup(project: Path) -> None:
         (project / name).write_bytes((LOCKED / name).read_bytes())
 
 
+@pytest.mark.parametrize("resume", [False, True])
+def test_real_explicit_reuse_and_captured_resume(project: Path, resume: bool) -> None:
+    setup(project)
+    ingest = project / "steps/ingest.py"
+    ingest.write_text(ingest.read_text() + "\nprint('ingest executed')\n")
+    options = api.RunOptions(timeout_seconds=180)
+    original = api.run(root=project, options=options)
+    assert original.state == "succeeded"
+    previous = api.pipeline_status(original.id, root=project, verify=True)
+    train = project / "steps/train.py"
+    train.write_text(train.read_text().replace("mean(values)", "mean(values) + 10"))
+    result = api.run(
+        root=project, options=options, reuse_from=original.id, from_step="train", resume=resume
+    )
+    assert result.state == "succeeded"
+    record = api.pipeline_status(result.id, root=project, verify=True)
+    assert record.reuse_from == original.id
+    assert record.resume is resume
+    assert record.attempts["ingest"].reused_from == original.id
+    assert record.attempts["split"].reused_from == original.id
+    assert record.attempts["train"].reused_from is None
+    assert (record.source_sha256 == previous.source_sha256) is resume
+    directory = project / ".mlef/runs" / result.id
+    assert "ingest executed" not in (directory / "stdout.log").read_text()
+    model = (
+        attempt_directory(directory / "artifacts/pipeline", "train") / "outputs/model/model.json"
+    )
+    prediction = json.loads(model.read_text())["prediction"]
+    assert (prediction > 10) is (not resume)
+
+
 @pytest.mark.parametrize("fail", [False, True])
 def test_real_captured_pipeline_and_failed_step(project: Path, fail: bool) -> None:
     setup(project)

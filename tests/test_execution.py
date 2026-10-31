@@ -20,15 +20,263 @@ from mlef.execution import (
     prepare_pipeline,
     read_pipeline,
 )
+from mlef.locking import run_lock
 from mlef.pipeline import validate
 from mlef.project import initialize
 from mlef.provenance import capture, extract_source
 from mlef.records import RunRecord, read_run
+from mlef.reuse import copy_snapshot, reuse_steps, verify_source
 from mlef.runner import now, run, save, source_files
 from mlef.sdk import LocalContext, read_step
 from mlef.sdk_distribution import capture_sdk
 
 LOCKED = Path(__file__).resolve().parents[1] / "examples/pipeline"
+
+
+def finish_parent(directory: Path) -> None:
+    run_dir = directory.parents[1]
+    parent = read_run(run_dir / "run.json")
+    parent.state = "succeeded" if read_pipeline(directory).state == "complete" else "failed"
+    parent.finished_at = now()
+    parent.execution_exit_code = 0 if parent.state == "succeeded" else 1
+    save(run_dir / "run.json", parent)
+
+
+def test_explicit_reuse_runs_edited_training_and_is_self_contained(project: Path) -> None:
+    setup(project)
+    original = prepare(project)
+    assert execute_pipeline(project, original) == 0
+    finish_parent(original)
+    previous = read_pipeline(original)
+    script = project / "steps/train.py"
+    script.write_text(script.read_text().replace("mean(values)", "mean(values) + 10"))
+    fork = prepare(project)
+    record = reuse_steps(project, previous.run_id, fork, "train")
+    assert record.attempts["ingest"].reused_from == previous.run_id
+    assert record.attempts["split"].reused_from == previous.run_id
+    assert record.attempts["train"].state == "pending"
+    assert record.attempts["evaluate"].state == "pending"
+    original.parents[1].rename(original.parents[1].with_name("hidden-source"))
+    assert execute_pipeline(project, fork) == 0
+    finish_parent(fork)
+    record = api.pipeline_status(record.run_id, root=project, verify=True)
+    result = read_step(attempt_directory(fork, "train"))
+    assert result.inputs["partitions"].run_id == previous.run_id
+    model = attempt_directory(fork, "train") / "outputs/model/model.json"
+    assert json.loads(model.read_text())["prediction"] > 10
+    assert read_step(attempt_directory(fork, "ingest")).run_id == previous.run_id
+    with pytest.raises(ValueError, match="only start once"):
+        execute_pipeline(project, fork)
+
+
+@pytest.mark.parametrize("change", ["bytes", "script", "contract", "sdk", "archive", "binding"])
+def test_reuse_rejects_corruption_and_incompatibility(project: Path, change: str) -> None:
+    setup(project)
+    original = prepare(project)
+    assert execute_pipeline(project, original) == 0
+    finish_parent(original)
+    previous = read_pipeline(original)
+    if change == "bytes":
+        (attempt_directory(original, "ingest") / "outputs/data/data.json").write_text("[]")
+    elif change == "sdk":
+        (original.parents[1] / "sdk" / previous.sdk_wheel.filename).write_bytes(b"changed")
+    elif change == "archive":
+        (original.parents[1] / "source.tar.gz").write_bytes(b"changed")
+    elif change == "script":
+        script = project / "steps/ingest.py"
+        script.write_text(script.read_text() + "\nprint('changed')\n")
+    elif change == "contract":
+        script = project / "steps/ingest.py"
+        script.write_text(
+            script.read_text().replace(
+                'format="application/json")]', 'format="application/json", required=False)]'
+            )
+        )
+        split = project / "steps/split.py"
+        split.write_text(
+            split.read_text().replace(
+                'Input(name="data", type=ArtifactType.FILE, format="application/json")',
+                'Input(name="data", type=ArtifactType.FILE, '
+                'format="application/json", required=False)',
+            )
+        )
+    else:
+        definition = project / "mlef.toml"
+        definition.write_text(definition.read_text().replace('data = "ingest.data"', ""))
+        script = project / "steps/split.py"
+        script.write_text(
+            script.read_text().replace(
+                'Input(name="data", type=ArtifactType.FILE, format="application/json")',
+                'Input(name="data", type=ArtifactType.FILE, '
+                'format="application/json", required=False)',
+            )
+        )
+    fork = prepare(project)
+    with pytest.raises(ValueError, match=r"changed|incompatible"):
+        reuse_steps(project, previous.run_id, fork, "train")
+    assert read_pipeline(fork).state == "preparing"
+
+
+def test_resume_retains_source_and_sdk_and_failed_steps_are_not_reused(
+    project: Path, tmp_path: Path
+) -> None:
+    setup(project)
+    original = prepare(project)
+    record = read_pipeline(original)
+    assert execute_pipeline(project, original) == 0
+    finish_parent(original)
+    destination = project / ".mlef/runs" / str(uuid4())
+    destination.mkdir()
+    copied = copy_snapshot(project, record.run_id, destination)
+    assert copied == read_pipeline(original)
+    workspace = tmp_path / "resume"
+    workspace.mkdir()
+    extract_source(destination / "source.tar.gz", workspace)
+    (project / "steps/train.py").write_text("raise RuntimeError('live edit')")
+    directory = destination / "artifacts/pipeline"
+    prepare_pipeline(
+        workspace,
+        Path(record.definition_path),
+        directory,
+        destination.name,
+        record.source_sha256,
+        record.sdk_wheel,
+    )
+    reuse_steps(project, record.run_id, directory, "train", resume=True)
+    assert execute_pipeline(workspace, directory) == 0
+    assert read_pipeline(directory, verify=True).resume
+    old = read_pipeline(original)
+    old.attempts["split"].state = "failed"
+    old.attempts["train"].state = "skipped"
+    old.attempts["evaluate"].state = "skipped"
+    _save(original, old.model_copy(update={"state": "failed", "error": "failure"}))
+    (project / "steps/train.py").write_text((workspace / "steps/train.py").read_text())
+    with pytest.raises(ValueError, match="incomplete or incompatible"):
+        reuse_steps(project, record.run_id, prepare(project), "train")
+
+
+def test_frontier_reuses_independent_branches_and_preserves_transitive_lineage(
+    project: Path,
+) -> None:
+    setup(project)
+    script = project / "steps/audit.py"
+    script.write_text(
+        (project / "steps/ingest.py").read_text().replace('name="ingest"', 'name="audit"')
+    )
+    definition = project / "mlef.toml"
+    definition.write_text(
+        definition.read_text() + '\n[[steps]]\nname = "audit"\nscript = "steps/audit.py"\n'
+    )
+    original = prepare(project)
+    assert execute_pipeline(project, original) == 0
+    finish_parent(original)
+    previous = read_pipeline(original)
+    fork = prepare(project)
+    record = reuse_steps(project, previous.run_id, fork, "train")
+    assert record.attempts["audit"].reused_from == previous.run_id
+    assert execute_pipeline(project, fork) == 0
+    finish_parent(fork)
+    next_fork = prepare(project)
+    chained = reuse_steps(project, record.run_id, next_fork, "evaluate")
+    assert chained.attempts["ingest"].reused_from == previous.run_id
+    assert chained.attempts["train"].reused_from == record.run_id
+    assert execute_pipeline(project, next_fork) == 0
+    read_pipeline(next_fork, verify=True)
+
+
+@pytest.mark.parametrize(
+    ("reuse_from", "from_step", "resume"),
+    [
+        ("x", None, False),
+        (None, "train", False),
+        (None, None, True),
+        ("x", "train", True),
+    ],
+)
+def test_reuse_options_reject_ambiguous_requests(
+    project: Path, reuse_from: str | None, from_step: str | None, resume: bool
+) -> None:
+    with pytest.raises(ValueError, match=r"together|only supported"):
+        run(
+            project,
+            Path("train.py"),
+            [],
+            [],
+            [],
+            reuse_from=reuse_from,
+            from_step=from_step,
+            resume=resume,
+        )
+
+
+def test_cli_forwards_explicit_reuse(project: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    initialize(project)
+    calls = []
+    monkeypatch.setattr("mlef.cli.run", lambda *args, **kwargs: calls.append(kwargs) or 0)
+    assert main(["run", "--reuse-from", str(uuid4()), "--from-step", "train", "--resume"]) == 0
+    assert calls[0]["from_step"] == "train"
+    assert calls[0]["resume"] is True
+
+
+def test_reuse_rejects_active_cleanup_pending_and_legacy_sdk_sources(project: Path) -> None:
+    setup(project)
+    original = prepare(project)
+    record = read_pipeline(original)
+    with pytest.raises(ValueError, match="terminal source"):
+        verify_source(project, record.run_id)
+    finish_parent(original)
+    with run_lock(original.parents[1]), pytest.raises(ValueError, match="active runner"):
+        reuse_steps(project, record.run_id, prepare(project), "train")
+    parent = read_run(original.parents[1] / "run.json")
+    assert parent.runtime is not None
+    parent.runtime.cleanup_pending = True
+    save(original.parents[1] / "run.json", parent)
+    with pytest.raises(ValueError, match="resources need recovery"):
+        verify_source(project, record.run_id)
+    parent.runtime.cleanup_pending = False
+    save(original.parents[1] / "run.json", parent)
+    record.sdk_wheel.pipeline_reuse = False
+    _save(original, record)
+    destination = project / "copied-snapshot"
+    destination.mkdir()
+    with pytest.raises(ValueError, match="captured SDK does not support"):
+        copy_snapshot(project, record.run_id, destination)
+
+
+def test_runner_resume_never_reads_live_source_or_recaptures_sdk(
+    project: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    setup(project)
+    original = prepare(project)
+    assert execute_pipeline(project, original) == 0
+    finish_parent(original)
+    previous = read_pipeline(original)
+    (project / "mlef.toml").unlink()
+    (project / "steps").rename(project / "edited-steps")
+    monkeypatch.setattr("mlef.runner.capture", lambda *args: pytest.fail("recaptured source"))
+    monkeypatch.setattr("mlef.runner.capture_sdk", lambda *args: pytest.fail("recaptured SDK"))
+    monkeypatch.setattr("mlef.runner.shutil.which", lambda name: None)
+    identifier = str(uuid4())
+    assert (
+        run(
+            project,
+            Path("mlef.toml"),
+            [],
+            [],
+            [],
+            reuse_from=previous.run_id,
+            from_step="train",
+            resume=True,
+            _identifier=identifier,
+        )
+        == 1
+    )
+    record = api.pipeline_status(identifier, root=project, verify=True)
+    assert record.source_sha256 == previous.source_sha256
+    assert record.sdk_wheel == previous.sdk_wheel
+    assert record.attempts["ingest"].reused_from == previous.run_id
+    assert record.attempts["train"].state == "skipped"
+    assert record.resume
 
 
 def setup(project: Path) -> None:
