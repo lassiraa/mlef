@@ -3,7 +3,10 @@ Python API reference
 
 :doc:`Documentation home <index>`
 
-Python callers can use the supported synchronous ``mlef.api`` entry points:
+Python callers can use the supported synchronous ``mlef.api`` entry points.
+For non-executing script contract and wiring checks, see ``api.validate`` in
+:doc:`pipelines`. It returns a versioned validation report without requiring
+initialized run storage or Docker. For execution:
 
 .. code-block:: python
 

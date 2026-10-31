@@ -1,0 +1,135 @@
+{
+  "$defs": {
+    "ArtifactType": {
+      "enum": [
+        "file",
+        "directory",
+        "table",
+        "dataset",
+        "split",
+        "predictions",
+        "model",
+        "checkpoint",
+        "metrics",
+        "parameters",
+        "schema",
+        "array",
+        "embeddings",
+        "index",
+        "plot",
+        "report",
+        "text",
+        "image",
+        "audio",
+        "video",
+        "annotations",
+        "explanations",
+        "archive"
+      ],
+      "title": "ArtifactType",
+      "type": "string"
+    },
+    "Input": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/ArtifactType"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "Input",
+      "type": "object"
+    },
+    "Output": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/ArtifactType"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "format"
+      ],
+      "title": "Output",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "inputs": {
+      "items": {
+        "$ref": "#/$defs/Input"
+      },
+      "title": "Inputs",
+      "type": "array"
+    },
+    "name": {
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "outputs": {
+      "items": {
+        "$ref": "#/$defs/Output"
+      },
+      "minItems": 1,
+      "title": "Outputs",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name",
+    "outputs"
+  ],
+  "title": "Step",
+  "type": "object"
+}

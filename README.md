@@ -101,6 +101,7 @@ The documentation sources are linked below.
 | [Setup](docs/setup.rst) | Installation, host vs experiment environments, troubleshooting |
 | [Tabular workflows](docs/tabular.rst) | sklearn/XGBoost, regression, refit and agent feedback |
 | [Artifact contracts](docs/artifacts.rst) | Versioned artifact manifests and structured metric evidence |
+| [Pipeline validation](docs/pipelines.rst) | Static script contracts, TOML wiring, dependency graphs and JSON reports |
 | [Python API](docs/api.rst) | Signatures, options, returns, errors and output callbacks |
 | [Run and CLI reference](docs/runs.rst) | Commands, limits, provenance, retrieval and recovery |
 | [Agent benchmarks](docs/benchmarks.rst) | Matched trials, private scoring and reporting |
