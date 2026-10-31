@@ -351,6 +351,54 @@ ASCII letter and contain only letters, digits, underscores and hyphens. Each
 step needs at least one output. Input names and output names must each be unique;
 the two namespaces may overlap. ``Step.schema_version`` defaults to integer 1.
 
+Typed step roles
+----------------
+
+Opt into a semantic role using the version-2 script contract:
+
+.. code-block:: python
+
+    step = Step(
+        schema_version=2,
+        kind="train",
+        name="fit_baseline",
+        inputs=[Input(name="training", type=ArtifactType.DATASET)],
+        outputs=[Output(name="model", type=ArtifactType.MODEL, format="joblib")],
+    )
+
+The initial roles validate declared required inputs and outputs:
+
+* ``generic`` accepts ordinary typed script contracts.
+* ``train`` requires at least one required training input and a required model
+  output. Training inputs can include custom artifact types.
+* ``predict`` requires model and dataset inputs and a predictions output.
+* ``evaluate`` requires a dataset and either a model or predictions as inputs,
+  plus a metrics output. All metrics outputs use ``application/json``.
+
+Roles are independent of step names. ``mlef validate`` checks these rules without
+executing scripts, including declarations supplied in explicit contract files.
+The runner retains the role in captured contracts and enforces ordinary managed
+output publication. Specialized model/prediction metadata requirements still
+apply; a role does not replace an artifact contract or implement model loading.
+
+This initial role implementation checks declarations. It does not yet check that
+evaluation payload model/data references match bound inputs, establish protocol
+identity or prevent trusted scripts from fitting on evaluation data. Reusable
+evaluation records and multi-model execution remain planned.
+
+Existing declarations default to ``schema_version=1`` and ``kind="generic"``.
+Version-1 serialization omits ``kind`` and retains its original field order,
+preserving saved contract fingerprints and compatibility with captured old SDKs.
+Non-generic roles require version 2 explicitly. The current reader accepts both
+versions, while old readers/SDKs cannot execute version-2 declarations. The
+published ``step-v1`` structural schema remains unchanged; ``step-v2`` describes
+the current reader, with role/version and input/output invariants additionally
+enforced by Pydantic.
+
+Pipeline definitions still use their existing ``schema_version=1``: the version
+above belongs to each embedded script contract. Continue to declare wiring as
+described below.
+
 Wiring with TOML
 ----------------
 

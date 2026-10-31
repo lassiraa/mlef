@@ -7,10 +7,18 @@ import heapq
 import json
 import tomllib
 from pathlib import Path
-from typing import TYPE_CHECKING, Annotated, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Literal, Self, cast
 from uuid import uuid4
 
-from pydantic import Field, JsonValue, field_validator, model_validator
+from pydantic import (
+    ConfigDict,
+    Field,
+    JsonValue,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from .artifacts import ArtifactType, CustomType, safe_path
 from .records import Contract
@@ -37,10 +45,11 @@ class Output(Contract):
 
 
 class Step(Contract):
-    schema_version: Literal[1] = 1
+    schema_version: Literal[1, 2] = 1
     name: Name
     inputs: list[Input] = Field(default_factory=list)
     outputs: list[Output] = Field(min_length=1)
+    kind: Literal["generic", "train", "predict", "evaluate"] = "generic"
 
     @model_validator(mode="after")
     def unique_names(self) -> Self:
@@ -76,6 +85,62 @@ class Step(Contract):
         from .sdk import managed_context
 
         return managed_context(self)
+
+    @model_serializer(mode="wrap")
+    def serialize(self, handler: SerializerFunctionWrapHandler) -> dict[str, object]:
+        values = cast(dict[str, object], handler(self))
+        if self.schema_version == 1:
+            values.pop("kind", None)
+        return values
+
+    @model_validator(mode="after")
+    def role_contract(self) -> Self:
+        if self.schema_version == 1 and self.kind != "generic":
+            raise ValueError("Typed step roles require schema_version=2.")
+        inputs = {
+            item.type
+            for item in self.inputs
+            if item.required and isinstance(item.type, ArtifactType)
+        }
+        outputs = {
+            item.type
+            for item in self.outputs
+            if item.required and isinstance(item.type, ArtifactType)
+        }
+        if self.kind == "train" and (
+            not any(item.required for item in self.inputs) or ArtifactType.MODEL not in outputs
+        ):
+            raise ValueError("Train steps require training inputs and a required model output.")
+        if self.kind == "predict" and (
+            not {ArtifactType.MODEL, ArtifactType.DATASET} <= inputs
+            or ArtifactType.PREDICTIONS not in outputs
+        ):
+            raise ValueError("Predict steps require model/dataset inputs and a predictions output.")
+        if self.kind == "evaluate":
+            if (
+                ArtifactType.DATASET not in inputs
+                or not inputs & {ArtifactType.MODEL, ArtifactType.PREDICTIONS}
+                or ArtifactType.METRICS not in outputs
+            ):
+                raise ValueError(
+                    "Evaluate steps require dataset and model/predictions inputs "
+                    "and metrics output."
+                )
+            if any(
+                item.type == ArtifactType.METRICS and item.format != "application/json"
+                for item in self.outputs
+            ):
+                raise ValueError("Evaluation metric outputs require application/json format.")
+        return self
+
+
+class StepV1(Contract):
+    # Keep the published v1 structural schema independent of the current reader.
+    model_config = ConfigDict(title="Step")
+    schema_version: Literal[1] = 1
+    name: Name
+    inputs: list[Input] = Field(default_factory=list)
+    outputs: list[Output] = Field(min_length=1)
 
 
 class PipelineStep(Contract):

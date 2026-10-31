@@ -14,7 +14,7 @@ from mlef.execution import CacheDecision, PipelineRecord, StepFingerprint
 from mlef.inspection import RunMetrics
 from mlef.metrics import ExternalMetric, Metrics
 from mlef.models import ModelListing, ModelVersion
-from mlef.pipeline import PipelineDefinition, Step, ValidationReport
+from mlef.pipeline import PipelineDefinition, Step, StepV1, ValidationReport
 from mlef.records import Experiment, RunRecord
 from mlef.sdk import StepResult
 from mlef.tabular import Evaluation as TabularEvaluation
@@ -42,7 +42,8 @@ def main() -> None:
         ("tabular-cv-recipe-v1", CvRecipe),
         ("metrics-v1", Metrics),
         ("external-metric-v1", ExternalMetric),
-        ("step-v1", Step),
+        ("step-v1", StepV1),
+        ("step-v2", Step),
         ("step-result-v1", StepResult),
         ("pipeline-v1", PipelineDefinition),
         ("pipeline-validation-v1", ValidationReport),

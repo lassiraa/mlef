@@ -48,13 +48,70 @@ def test_declaration_contracts() -> None:
         Step(name="train", inputs=step.inputs * 2, outputs=step.outputs)
     with pytest.raises(ValidationError, match="unique"):
         Step(name="train", outputs=step.outputs * 2)
-    for version in [True, "1", 2]:
+    for version in [True, "1", 3]:
         with pytest.raises(ValidationError):
             Step.model_validate_json(
                 step.model_dump_json().replace(
                     '"schema_version":1', f'"schema_version":{json.dumps(version)}'
                 )
             )
+
+
+def test_legacy_step_serialization_is_unchanged() -> None:
+    from mlef.pipeline import StepV1
+
+    legacy = StepV1(
+        name="plain", outputs=[Output(name="file", type=ArtifactType.FILE, format="text")]
+    )
+    current = Step.model_validate_json(legacy.model_dump_json())
+    assert current.kind == "generic"
+    assert current.model_dump_json() == legacy.model_dump_json()
+    assert current.model_dump(mode="json") == legacy.model_dump(mode="json")
+
+
+@pytest.mark.parametrize(
+    ("kind", "producer", "output"),
+    [
+        ("train", ArtifactType.DATASET, ArtifactType.MODEL),
+        ("predict", ArtifactType.MODEL, ArtifactType.PREDICTIONS),
+        ("evaluate", ArtifactType.MODEL, ArtifactType.METRICS),
+        ("evaluate", ArtifactType.PREDICTIONS, ArtifactType.METRICS),
+    ],
+)
+def test_typed_role_contracts(kind: str, producer: ArtifactType, output: ArtifactType) -> None:
+    declarations = [Input(name="subject", type=producer)]
+    if producer != ArtifactType.DATASET:
+        declarations.append(Input(name="data", type=ArtifactType.DATASET))
+    payload = {
+        "schema_version": 2,
+        "name": "work",
+        "kind": kind,
+        "inputs": [item.model_dump(mode="json") for item in declarations],
+        "outputs": [
+            Output(name="result", type=output, format="application/json").model_dump(mode="json")
+        ],
+    }
+    step = Step.model_validate_json(json.dumps(payload))
+    assert step.kind == kind
+    assert Step.model_validate_json(step.model_dump_json()) == step
+    payload["schema_version"] = 1
+    with pytest.raises(ValueError, match="schema_version=2"):
+        Step.model_validate_json(json.dumps(payload))
+    payload["schema_version"] = 2
+    payload["inputs"] = []
+    with pytest.raises(ValueError, match="require"):
+        Step.model_validate_json(json.dumps(payload))
+
+
+def test_role_validation_is_static(project: Path) -> None:
+    path = script(project, "train")
+    path.write_text(
+        path.read_text().replace("name='train'", 'schema_version=2, kind="evaluate", name="train"')
+    )
+    definition(project, entry("train"))
+    report = validate(project)
+    assert report.status == "invalid"
+    assert "Evaluate steps require" in report.model_dump_json()
 
 
 def test_static_inspection_does_not_execute_imports_or_top_level_code(
