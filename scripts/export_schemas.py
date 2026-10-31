@@ -13,6 +13,7 @@ from mlef.evidence import Result
 from mlef.execution import CacheDecision, PipelineRecord, StepFingerprint
 from mlef.inspection import RunMetrics
 from mlef.metrics import ExternalMetric, Metrics
+from mlef.models import ModelListing, ModelVersion
 from mlef.pipeline import PipelineDefinition, Step, ValidationReport
 from mlef.records import Experiment, RunRecord
 from mlef.sdk import StepResult
@@ -33,6 +34,8 @@ def main() -> None:
     schemas = [
         ("run-history-v1", RunHistory),
         ("run-metrics-v1", RunMetrics),
+        ("model-version-v1", ModelVersion),
+        ("model-listing-v1", ModelListing),
         ("artifact-v1", ArtifactManifest),
         ("custom-type-v1", CustomType),
         ("tabular-bundle-v1", TabularBundle),

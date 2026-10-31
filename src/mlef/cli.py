@@ -50,6 +50,23 @@ def main(argv: list[str] | None = None) -> int:
     parser = Parser(prog="mlef", description="Run Python experiments in Docker.")
     parser.add_argument("--version", action="version", version=f"mlef {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
+    model_parser = commands.add_parser(
+        "models", help="Discover and register saved model artifacts."
+    )
+    model_commands = model_parser.add_subparsers(dest="models_command", required=True)
+    model_list = model_commands.add_parser("list")
+    model_list.add_argument("--run", dest="run_id")
+    model_list.add_argument("--json", action="store_true")
+    model_register = model_commands.add_parser("register")
+    model_register.add_argument("producer", help="RUN/STEP/OUTPUT")
+    model_register.add_argument("--name", required=True)
+    model_register.add_argument("--json", action="store_true")
+    model_show = model_commands.add_parser("show")
+    model_show.add_argument("selector", help="MODEL@VERSION")
+    model_show.add_argument("--json", action="store_true")
+    model_get = model_commands.add_parser("get")
+    model_get.add_argument("selector", help="MODEL@VERSION")
+    model_get.add_argument("--output", required=True, type=Path)
     history = commands.add_parser("runs", help="Inspect saved run history offline.")
     history_commands = history.add_subparsers(dest="runs_command", required=True)
     history_list = history_commands.add_parser("list")
@@ -146,10 +163,31 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Only mlef run accepts script arguments after --.")
     try:
         root = project_root()
-        if args.command == "runs":
+        if args.command in {"runs", "models"}:
             from . import api
 
             try:
+                if args.command == "models":
+                    if args.models_command == "get":
+                        print(api.get_model(args.selector, root=root, output=args.output))
+                        return 0
+                    if args.models_command == "list":
+                        model_result = api.list_models(root=root, run_id=args.run_id)
+                        print(model_result.model_dump_json(indent=None if args.json else 2))
+                    elif args.models_command == "register":
+                        parts = args.producer.split("/")
+                        if len(parts) != 3:
+                            raise ValueError("Expected RUN/STEP/OUTPUT.")
+                        version = api.register_model(*parts, name=args.name, root=root)
+                        print(
+                            version.model_dump_json()
+                            if args.json
+                            else f"{version.name}@{version.version}"
+                        )
+                    else:
+                        version = api.model_version(args.selector, root=root)
+                        print(version.model_dump_json(indent=None if args.json else 2))
+                    return 0
                 if args.runs_command == "list":
                     result = api.run_history(
                         root=root,

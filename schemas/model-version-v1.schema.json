@@ -1,0 +1,1221 @@
+{
+  "$defs": {
+    "ArtifactFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "size_bytes",
+        "sha256"
+      ],
+      "title": "ArtifactFile",
+      "type": "object"
+    },
+    "ArtifactManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "items": {
+            "$ref": "#/$defs/ArtifactFile"
+          },
+          "minItems": 1,
+          "title": "Files",
+          "type": "array"
+        },
+        "format": {
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "metadata": {
+          "discriminator": {
+            "mapping": {
+              "dataset": "#/$defs/DatasetMetadata",
+              "generic": "#/$defs/GenericMetadata",
+              "model": "#/$defs/ModelMetadata",
+              "predictions": "#/$defs/PredictionsMetadata",
+              "split": "#/$defs/SplitMetadata"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/DatasetMetadata"
+            },
+            {
+              "$ref": "#/$defs/SplitMetadata"
+            },
+            {
+              "$ref": "#/$defs/PredictionsMetadata"
+            },
+            {
+              "$ref": "#/$defs/ModelMetadata"
+            },
+            {
+              "$ref": "#/$defs/GenericMetadata"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactType"
+            },
+            {
+              "$ref": "#/$defs/CustomType"
+            }
+          ],
+          "title": "Type"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "format",
+        "files"
+      ],
+      "title": "ArtifactManifest",
+      "type": "object"
+    },
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "An exact producer reference, never a mutable latest alias or storage URI.",
+      "properties": {
+        "output": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Output",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "step": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "step",
+        "output",
+        "sha256"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ArtifactType": {
+      "enum": [
+        "file",
+        "directory",
+        "table",
+        "dataset",
+        "split",
+        "predictions",
+        "model",
+        "checkpoint",
+        "metrics",
+        "parameters",
+        "schema",
+        "array",
+        "embeddings",
+        "index",
+        "plot",
+        "report",
+        "text",
+        "image",
+        "audio",
+        "video",
+        "annotations",
+        "explanations",
+        "archive"
+      ],
+      "title": "ArtifactType",
+      "type": "string"
+    },
+    "Column": {
+      "additionalProperties": false,
+      "properties": {
+        "dtype": {
+          "minLength": 1,
+          "title": "Dtype",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "nullable": {
+          "default": true,
+          "title": "Nullable",
+          "type": "boolean"
+        },
+        "role": {
+          "default": "feature",
+          "enum": [
+            "feature",
+            "target",
+            "row_id",
+            "group",
+            "time",
+            "auxiliary"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "dtype"
+      ],
+      "title": "Column",
+      "type": "object"
+    },
+    "ColumnStatistics": {
+      "additionalProperties": false,
+      "properties": {
+        "distinct": {
+          "minimum": 0,
+          "title": "Distinct",
+          "type": "integer"
+        },
+        "missing": {
+          "minimum": 0,
+          "title": "Missing",
+          "type": "integer"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "name_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Name Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "name_sha256",
+        "missing",
+        "distinct"
+      ],
+      "title": "ColumnStatistics",
+      "type": "object"
+    },
+    "Controls": {
+      "additionalProperties": false,
+      "properties": {
+        "applied": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Applied",
+          "type": "object"
+        },
+        "requested": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Requested",
+          "type": "object"
+        }
+      },
+      "title": "Controls",
+      "type": "object"
+    },
+    "CustomType": {
+      "additionalProperties": false,
+      "description": "A namespaced, versioned semantic identity, independent of executable codecs.",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "version": {
+          "exclusiveMinimum": 0,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "CustomType",
+      "type": "object"
+    },
+    "Dataset": {
+      "additionalProperties": false,
+      "properties": {
+        "fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Fingerprint"
+        },
+        "reference": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Reference"
+        }
+      },
+      "title": "Dataset",
+      "type": "object"
+    },
+    "DatasetMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/Column"
+          },
+          "minItems": 1,
+          "title": "Columns",
+          "type": "array"
+        },
+        "dataset_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dataset Sha256"
+        },
+        "kind": {
+          "const": "dataset",
+          "default": "dataset",
+          "title": "Kind",
+          "type": "string"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DatasetProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "row_id": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Row Id",
+          "type": "array"
+        },
+        "row_ids_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row Ids Sha256"
+        },
+        "rows": {
+          "minimum": 0,
+          "title": "Rows",
+          "type": "integer"
+        },
+        "statistics": {
+          "default": "omitted",
+          "enum": [
+            "omitted",
+            "exact",
+            "sampled",
+            "unavailable"
+          ],
+          "title": "Statistics",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rows",
+        "columns",
+        "row_id"
+      ],
+      "title": "DatasetMetadata",
+      "type": "object"
+    },
+    "DatasetProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/ColumnStatistics"
+          },
+          "maxItems": 20,
+          "title": "Columns",
+          "type": "array"
+        },
+        "method": {
+          "enum": [
+            "exact",
+            "sampled"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "omitted_columns": {
+          "minimum": 0,
+          "title": "Omitted Columns",
+          "type": "integer"
+        },
+        "rows_examined": {
+          "minimum": 0,
+          "title": "Rows Examined",
+          "type": "integer"
+        },
+        "sample_seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Seed"
+        },
+        "sample_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Sha256"
+        }
+      },
+      "required": [
+        "method",
+        "rows_examined",
+        "columns",
+        "omitted_columns"
+      ],
+      "title": "DatasetProfile",
+      "type": "object"
+    },
+    "Evaluation": {
+      "additionalProperties": false,
+      "properties": {
+        "metric_definitions": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Metric Definitions",
+          "type": "object"
+        },
+        "protocol_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Protocol Id"
+        },
+        "seeds": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seeds"
+        },
+        "split_fingerprint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Split Fingerprint"
+        }
+      },
+      "title": "Evaluation",
+      "type": "object"
+    },
+    "Experiment": {
+      "additionalProperties": false,
+      "properties": {
+        "changed_variables": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Changed Variables",
+          "type": "object"
+        },
+        "dataset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Dataset"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "evaluation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Evaluation"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "hypothesis": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Hypothesis"
+        },
+        "metric_directions": {
+          "additionalProperties": {
+            "enum": [
+              "maximize",
+              "minimize"
+            ],
+            "type": "string"
+          },
+          "title": "Metric Directions",
+          "type": "object"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "title": "Parameters",
+          "type": "object"
+        },
+        "parent_run_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Parent Run Id"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "seeds": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "title": "Seeds",
+          "type": "object"
+        }
+      },
+      "title": "Experiment",
+      "type": "object"
+    },
+    "GenericMetadata": {
+      "additionalProperties": false,
+      "description": "Specialized metadata can be introduced without changing file storage.",
+      "properties": {
+        "kind": {
+          "const": "generic",
+          "default": "generic",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "GenericMetadata",
+      "type": "object"
+    },
+    "GitProvenance": {
+      "additionalProperties": false,
+      "properties": {
+        "branch": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Branch"
+        },
+        "commit": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Commit"
+        },
+        "dirty": {
+          "title": "Dirty",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "commit",
+        "branch",
+        "dirty"
+      ],
+      "title": "GitProvenance",
+      "type": "object"
+    },
+    "JsonValue": {},
+    "ModelArtifact": {
+      "additionalProperties": false,
+      "properties": {
+        "location_run_id": {
+          "title": "Location Run Id",
+          "type": "string"
+        },
+        "manifest": {
+          "$ref": "#/$defs/ArtifactManifest"
+        },
+        "output": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Output",
+          "type": "string"
+        },
+        "step": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "location_run_id",
+        "step",
+        "output",
+        "manifest"
+      ],
+      "title": "ModelArtifact",
+      "type": "object"
+    },
+    "ModelMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "framework": {
+          "minLength": 1,
+          "title": "Framework",
+          "type": "string"
+        },
+        "framework_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Framework Version"
+        },
+        "kind": {
+          "const": "model",
+          "default": "model",
+          "title": "Kind",
+          "type": "string"
+        },
+        "serialization": {
+          "minLength": 1,
+          "title": "Serialization",
+          "type": "string"
+        },
+        "training_dataset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "framework",
+        "serialization"
+      ],
+      "title": "ModelMetadata",
+      "type": "object"
+    },
+    "PredictionsMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "class_order": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Class Order"
+        },
+        "dataset": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "kind": {
+          "const": "predictions",
+          "default": "predictions",
+          "title": "Kind",
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "row_id": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Row Id",
+          "type": "array"
+        },
+        "scope": {
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        },
+        "split": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "task": {
+          "minLength": 1,
+          "title": "Task",
+          "type": "string"
+        },
+        "value_columns": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Value Columns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "dataset",
+        "model",
+        "task",
+        "row_id",
+        "value_columns",
+        "scope"
+      ],
+      "title": "PredictionsMetadata",
+      "type": "object"
+    },
+    "RunError": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "title": "Category",
+          "type": "string"
+        },
+        "message": {
+          "title": "Message",
+          "type": "string"
+        }
+      },
+      "required": [
+        "category",
+        "message"
+      ],
+      "title": "RunError",
+      "type": "object"
+    },
+    "RunRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Command",
+          "type": "array"
+        },
+        "controls": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Controls"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "created_at": {
+          "title": "Created At",
+          "type": "string"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RunError"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "execution_exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Exit Code"
+        },
+        "execution_seconds": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Execution Seconds"
+        },
+        "experiment": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Experiment"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        },
+        "git": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/GitProvenance"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "inputs": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SourceInputs"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "outputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Outputs",
+          "type": "array"
+        },
+        "runtime": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Runtime"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": 3,
+          "default": 3,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "stage": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Stage"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "state": {
+          "enum": [
+            "preparing",
+            "running",
+            "succeeded",
+            "failed",
+            "cancelled"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "warnings": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Warnings",
+          "type": "array"
+        }
+      },
+      "required": [
+        "id",
+        "state",
+        "created_at",
+        "command"
+      ],
+      "title": "RunRecord",
+      "type": "object"
+    },
+    "Runtime": {
+      "additionalProperties": false,
+      "properties": {
+        "cleanup_pending": {
+          "default": false,
+          "title": "Cleanup Pending",
+          "type": "boolean"
+        },
+        "container_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Container Id"
+        },
+        "container_name": {
+          "title": "Container Name",
+          "type": "string"
+        },
+        "probe_name": {
+          "title": "Probe Name",
+          "type": "string"
+        },
+        "project": {
+          "title": "Project",
+          "type": "string"
+        },
+        "token": {
+          "title": "Token",
+          "type": "string"
+        }
+      },
+      "required": [
+        "token",
+        "project",
+        "container_name",
+        "probe_name"
+      ],
+      "title": "Runtime",
+      "type": "object"
+    },
+    "SourceInputs": {
+      "additionalProperties": false,
+      "properties": {
+        "build_recipe_sha256": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Build Recipe Sha256"
+        },
+        "dependency_hashes": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "title": "Dependency Hashes",
+          "type": "object"
+        },
+        "included_untracked": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Included Untracked",
+          "type": "array"
+        },
+        "outputs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Outputs",
+          "type": "array"
+        },
+        "source_sha256": {
+          "title": "Source Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_sha256",
+        "included_untracked"
+      ],
+      "title": "SourceInputs",
+      "type": "object"
+    },
+    "SplitMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "assignments_file": {
+          "title": "Assignments File",
+          "type": "string"
+        },
+        "dataset": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "kind": {
+          "const": "split",
+          "default": "split",
+          "title": "Kind",
+          "type": "string"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "strategy": {
+          "minLength": 1,
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataset",
+        "strategy",
+        "assignments_file"
+      ],
+      "title": "SplitMetadata",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact": {
+      "$ref": "#/$defs/ModelArtifact"
+    },
+    "captured_run": {
+      "$ref": "#/$defs/RunRecord"
+    },
+    "name": {
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "registered_at": {
+      "title": "Registered At",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "version": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "version",
+    "registered_at",
+    "artifact",
+    "captured_run"
+  ],
+  "title": "ModelVersion",
+  "type": "object"
+}
