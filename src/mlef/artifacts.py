@@ -6,7 +6,7 @@ from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Literal, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from .records import Contract, run_id
 
@@ -35,6 +35,15 @@ class ArtifactType(StrEnum):
     ANNOTATIONS = "annotations"
     EXPLANATIONS = "explanations"
     ARCHIVE = "archive"
+
+
+class CustomType(Contract):
+    """A namespaced, versioned semantic identity, independent of executable codecs."""
+
+    model_config = ConfigDict(frozen=True)
+    schema_version: Literal[1] = 1
+    name: str = Field(pattern=r"^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$")
+    version: int = Field(gt=0)
 
 
 class ArtifactRef(Contract):
@@ -197,7 +206,7 @@ Metadata = DatasetMetadata | SplitMetadata | PredictionsMetadata | ModelMetadata
 class ArtifactManifest(Contract):
     schema_version: Literal[1] = 1
     name: str = Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")
-    type: ArtifactType
+    type: ArtifactType | CustomType
     format: str = Field(min_length=1)
     files: list[ArtifactFile] = Field(min_length=1)
     metadata: Metadata = Field(default_factory=GenericMetadata, discriminator="kind")
@@ -211,7 +220,9 @@ class ArtifactManifest(Contract):
         for path in paths:
             if any(parent.as_posix() in paths for parent in PurePosixPath(path).parents):
                 raise ValueError("Artifact inventory contains conflicting file/directory paths.")
-        if self.metadata.kind != "generic" and self.metadata.kind != self.type.value:
+        if self.metadata.kind != "generic" and (
+            not isinstance(self.type, ArtifactType) or self.metadata.kind != self.type.value
+        ):
             raise ValueError("Artifact type and metadata kind disagree.")
         if (
             self.type

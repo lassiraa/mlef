@@ -1,16 +1,20 @@
 """Local Docker experiment execution."""
 
-from .artifacts import ArtifactManifest, ArtifactRef, ArtifactType
+from .artifacts import ArtifactManifest, ArtifactRef, ArtifactType, CustomType
 from .metrics import Metrics, Scalar, Undefined
 from .pipeline import Input, Output, Step
+from .registry import ArtifactCodec, ArtifactRegistry
 from .sdk import Artifact, ArtifactSource, LocalContext, StepResult, load_artifacts, read_step
 
 __all__ = [
     "Artifact",
+    "ArtifactCodec",
     "ArtifactManifest",
     "ArtifactRef",
+    "ArtifactRegistry",
     "ArtifactSource",
     "ArtifactType",
+    "CustomType",
     "Input",
     "LocalContext",
     "Metrics",

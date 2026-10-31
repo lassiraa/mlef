@@ -20,6 +20,7 @@ from .artifacts import (
     ArtifactManifest,
     ArtifactRef,
     ArtifactType,
+    CustomType,
     GenericMetadata,
     Metadata,
     safe_path,
@@ -34,7 +35,7 @@ class Artifact(Contract):
     """A file or directory in a declared output's managed directory."""
 
     name: Name
-    type: ArtifactType
+    type: ArtifactType | CustomType
     format: str = Field(min_length=1)
     path: Path
     metadata: Metadata = Field(default_factory=GenericMetadata, discriminator="kind")

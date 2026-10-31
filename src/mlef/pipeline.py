@@ -12,7 +12,7 @@ from uuid import uuid4
 
 from pydantic import Field, JsonValue, field_validator, model_validator
 
-from .artifacts import ArtifactType, safe_path
+from .artifacts import ArtifactType, CustomType, safe_path
 from .records import Contract
 
 if TYPE_CHECKING:
@@ -24,14 +24,14 @@ Status = Literal["verified", "invalid", "deferred"]
 
 class Input(Contract):
     name: Name
-    type: ArtifactType
+    type: ArtifactType | CustomType
     format: str | None = Field(default=None, min_length=1)
     required: bool = True
 
 
 class Output(Contract):
     name: Name
-    type: ArtifactType
+    type: ArtifactType | CustomType
     format: str = Field(min_length=1)
     required: bool = True
 
@@ -164,7 +164,7 @@ def _literal(node: ast.expr) -> JsonValue:
     if (
         isinstance(node, ast.Call)
         and isinstance(node.func, ast.Name)
-        and node.func.id in {"Step", "Input", "Output"}
+        and node.func.id in {"Step", "Input", "Output", "CustomType"}
         and not node.args
     ):
         arguments: dict[str, JsonValue] = {}

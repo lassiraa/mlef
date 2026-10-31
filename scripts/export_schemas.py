@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from mlef.artifacts import ArtifactManifest
+from mlef.artifacts import ArtifactManifest, CustomType
 from mlef.benchmark import HoldoutScore, TabularTrial
 from mlef.comparison import Comparison
 from mlef.environment import Environment
@@ -30,6 +30,7 @@ def main() -> None:
     root.mkdir(exist_ok=True)
     for name, model in [
         ("artifact-v1", ArtifactManifest),
+        ("custom-type-v1", CustomType),
         ("tabular-bundle-v1", TabularBundle),
         ("tabular-cv-recipe-v1", CvRecipe),
         ("metrics-v1", Metrics),

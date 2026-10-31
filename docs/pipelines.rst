@@ -393,7 +393,7 @@ Computed contracts
 
 The inspector reads the AST, not Python runtime values. It accepts literal
 strings, numbers, booleans, nulls, lists and dictionaries; keyword-only
-``Step(...)``, ``Input(...)`` and ``Output(...)`` constructors; and named
+``Step(...)``, ``Input(...)``, ``Output(...)`` and ``CustomType(...)`` constructors; and named
 ``ArtifactType`` enum members. It does not follow aliases, variable references,
 imports, helper functions, comprehensions, attribute calls or expanded arguments.
 Annotations on ``step`` are allowed. Multiple top-level assignments or a computed
