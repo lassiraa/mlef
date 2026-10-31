@@ -129,6 +129,31 @@ def test_cache_hits_are_self_contained_and_explained(
     assert json.loads(capsys.readouterr().out)["cache_from"] == previous.run_id
 
 
+@pytest.mark.parametrize("reuse", [False, True])
+def test_module_entrypoint_uses_canonical_cache_models(
+    project: Path, cached_pipeline: Path, reuse: bool
+) -> None:
+    previous = read_pipeline(cached_pipeline)
+    directory = prepare(project)
+    cache_environment(project, directory)
+    record = configure_cache(
+        project,
+        directory,
+        candidate=previous.run_id if reuse else None,
+        force=["train"] if reuse else None,
+    )
+    process = subprocess.run(
+        [sys.executable, "-I", "-m", "mlef.execution", str(directory)],
+        cwd=project,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert process.returncode == 0, process.stderr
+    finish_parent(directory)
+    assert api.pipeline_status(record.run_id, root=project, verify=True).state == "complete"
+
+
 def test_forced_step_executes_and_invalidates_its_dependents(
     project: Path, cached_pipeline: Path
 ) -> None:
