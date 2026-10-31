@@ -5,6 +5,7 @@ import os
 import subprocess
 import sys
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
@@ -21,6 +22,7 @@ from mlef.environment import (
     dependency_inputs,
     file_hash,
 )
+from mlef.events import Delivery
 from mlef.execution import (
     _save,
     attempt_directory,
@@ -34,11 +36,12 @@ from mlef.locking import file_lock, run_lock
 from mlef.pipeline import ExternalInput, validate
 from mlef.project import initialize
 from mlef.provenance import capture, extract_source
-from mlef.records import RunRecord, read_run
+from mlef.records import RunError, RunRecord, read_run
 from mlef.reuse import copy_snapshot, reuse_steps, verify_source
 from mlef.runner import now, run, save, source_files
 from mlef.sdk import LocalContext, read_step
 from mlef.sdk_distribution import capture_sdk
+from mlef.snapshots import restore
 from mlef.transfers import LocalStore, fetch, publish
 
 LOCKED = Path(__file__).resolve().parents[1] / "examples/pipeline"
@@ -759,6 +762,104 @@ def prepare(project: Path) -> Path:
     directory = run_dir / "artifacts/pipeline"
     prepare_pipeline(project, Path("mlef.toml"), directory, identifier, inputs.source_sha256, sdk)
     return directory
+
+
+@pytest.mark.parametrize("behavior", ["complete", "partial", "cancelled"])
+def test_frozen_evaluation_batches(
+    project: Path,
+    evaluation_project: Callable[[str], tuple[Path, list[str]]],
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    behavior: str,
+) -> None:
+    original = prepare(project)
+    assert execute_pipeline(project, original) == 0
+    finish_parent(original)
+    definition, selectors = evaluation_project(original.parents[1].name)
+    if behavior == "partial":
+        path = project / definition
+        path.write_text("parameters={fail_baseline=true}\n" + path.read_text())
+    calls = []
+
+    def execute(request: supervision.Request, delivery: Delivery) -> int:
+        calls.append(request.identifier)
+        if behavior == "cancelled":
+            return 130
+        target = project / ".mlef/runs" / request.identifier
+        target.mkdir()
+        assert request.source_snapshot is not None
+        snapshot = restore(Path(request.source_snapshot), target)
+        workspace = project / ".mlef/workspaces" / request.identifier
+        workspace.mkdir(parents=True)
+        extract_source(target / "source.tar.gz", workspace)
+        parent = RunRecord(
+            id=request.identifier,
+            state="preparing",
+            created_at=now(),
+            command=["python", "evaluate"],
+            git=snapshot.git,
+            inputs=snapshot.inputs,
+        )
+        save(target / "run.json", parent)
+        pipeline = target / "artifacts/pipeline"
+        prepare_pipeline(
+            workspace,
+            Path(request.script),
+            pipeline,
+            request.identifier,
+            snapshot.inputs.source_sha256,
+            snapshot.sdk,
+        )
+        stage_external_inputs(project, pipeline)
+        code = execute_pipeline(workspace, pipeline)
+        parent.state = "succeeded" if code == 0 else "failed"
+        parent.execution_exit_code = code
+        parent.finished_at = now()
+        if code != 0:
+            parent.error = RunError(category="execution", message="candidate failed")
+        save(target / "run.json", parent)
+        # Both children must use the frozen evaluator despite edits between runs.
+        (project / "evaluate.py").write_text("raise RuntimeError('live edit')")
+        return code
+
+    monkeypatch.setattr("mlef.evaluations.supervise", execute)
+    batch = api.evaluate(definition, selectors)
+    assert batch.state == behavior
+    assert api.evaluation_batch(batch.id) == batch
+    assert api.list_evaluations(model=selectors[0]).batches == [batch]
+    assert api.list_evaluations(limit=1, offset=1).batches == []
+    assert api.list_evaluations(limit=1, offset=1).total == 1
+    if behavior == "cancelled":
+        assert len(calls) == 1
+        assert [item.state for item in batch.evaluations] == ["cancelled", "pending"]
+    else:
+        assert len(calls) == 2
+        assert batch.evaluations[1].state == "succeeded"
+        assert batch.evaluations[1].metric_artifacts
+        assert "loss" not in batch.evaluations[1].metrics[0].metrics.values
+        assert batch.evaluations[1].metrics[0].metrics.values["mae"].model_dump()["value"] == 0
+        if behavior == "partial":
+            assert batch.evaluations[0].state == "failed"
+        else:
+            assert batch.evaluations[0].metrics[0].metrics.values["mae"].model_dump()["value"] == 1
+    capsys.readouterr()
+    assert main(["evaluations", "show", batch.id, "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == batch.model_dump(mode="json")
+    monkeypatch.setattr(api, "evaluate", lambda *args, **kwargs: batch)
+    assert (
+        main(["evaluate", str(definition), "--model", selectors[0], "--json"])
+        == {
+            "complete": 0,
+            "partial": 1,
+            "cancelled": 130,
+        }[behavior]
+    )
+    assert json.loads(capsys.readouterr().out) == batch.model_dump(mode="json")
+    if behavior == "complete":
+        snapshot = project / ".mlef/evaluations" / batch.id / batch.evaluations[0].run_id
+        (snapshot / "source.tar.gz").write_bytes(b"corrupt")
+        with pytest.raises(ValueError, match="Frozen evaluation source"):
+            restore(snapshot, project / ".mlef/changed-snapshot")
 
 
 @pytest.mark.parametrize("failure", [None, "checksum", "type", "active"])

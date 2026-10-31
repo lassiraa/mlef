@@ -2,15 +2,13 @@ ML platform functionality proposal
 ==================================
 
 Status: draft requirements. Commands and contracts below are proposed unless
-documented in :doc:`runs` or :doc:`models`. Filtered/paginated history, run and
-step details, root/pipeline metric inspection, model discovery and immutable
-registration/retrieval are implemented initial slices. Experiment grouping,
-model aliases and multi-model evaluation remain planned. :doc:`pipelines` also
-documents opt-in typed step roles with static contracts and runtime validation
-of output model/data/split/prediction references. Evaluation protocol identity
-and multi-model execution remain part of the planned evaluation workflow.
-Exact cross-run pipeline bindings now stage self-contained artifact inputs;
-evaluation batches and reusable protocol records remain planned.
+documented in :doc:`runs`, :doc:`models`, :doc:`pipelines` or :doc:`evaluations`.
+Implemented initial slices include filtered/paginated run history, run/step detail,
+root/pipeline metric inspection, model discovery and immutable registration,
+typed step roles with runtime lineage checks, exact cross-run inputs and
+sequential model batches with frozen evaluation recipes. Experiment grouping,
+model aliases, compatibility-aware comparisons, retry/reconciliation commands
+and leaderboards remain planned.
 This proposal extends the local, file-backed execution model.
 
 The intended workflow is: find previous experiments, inspect their models and

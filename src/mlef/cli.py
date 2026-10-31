@@ -50,6 +50,28 @@ def main(argv: list[str] | None = None) -> int:
     parser = Parser(prog="mlef", description="Run Python experiments in Docker.")
     parser.add_argument("--version", action="version", version=f"mlef {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
+    evaluation = commands.add_parser("evaluate", help="Evaluate exact model versions sequentially.")
+    evaluation.add_argument("definition", type=Path)
+    evaluation.add_argument("--model", action="append", required=True)
+    evaluation.add_argument("--timeout", type=float)
+    evaluation.add_argument("--cpus", type=float)
+    evaluation.add_argument("--memory")
+    evaluation.add_argument("--network", choices=["default", "none"], default="default")
+    evaluation.add_argument("--max-log-bytes", type=int)
+    evaluation.add_argument("--max-runner-log-bytes", type=int)
+    evaluation.add_argument("--json", action="store_true")
+    evaluations = commands.add_parser(
+        "evaluations", help="Inspect saved evaluation batches offline."
+    )
+    evaluation_commands = evaluations.add_subparsers(dest="evaluations_command", required=True)
+    evaluation_list = evaluation_commands.add_parser("list")
+    evaluation_list.add_argument("--model")
+    evaluation_list.add_argument("--limit", type=int, default=50)
+    evaluation_list.add_argument("--offset", type=int, default=0)
+    evaluation_list.add_argument("--json", action="store_true")
+    evaluation_show = evaluation_commands.add_parser("show")
+    evaluation_show.add_argument("batch_id")
+    evaluation_show.add_argument("--json", action="store_true")
     model_parser = commands.add_parser(
         "models", help="Discover and register saved model artifacts."
     )
@@ -64,6 +86,11 @@ def main(argv: list[str] | None = None) -> int:
     model_show = model_commands.add_parser("show")
     model_show.add_argument("selector", help="MODEL@VERSION")
     model_show.add_argument("--json", action="store_true")
+    model_evaluations = model_commands.add_parser("evaluations")
+    model_evaluations.add_argument("selector")
+    model_evaluations.add_argument("--limit", type=int, default=50)
+    model_evaluations.add_argument("--offset", type=int, default=0)
+    model_evaluations.add_argument("--json", action="store_true")
     model_get = model_commands.add_parser("get")
     model_get.add_argument("selector", help="MODEL@VERSION")
     model_get.add_argument("--output", required=True, type=Path)
@@ -163,11 +190,49 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Only mlef run accepts script arguments after --.")
     try:
         root = project_root()
-        if args.command in {"runs", "models"}:
+        if args.command in {"runs", "models", "evaluate", "evaluations"}:
             from . import api
 
             try:
+                if args.command == "evaluate":
+                    from .limits import memory_bytes
+
+                    batch = api.evaluate(
+                        args.definition,
+                        args.model,
+                        root=root,
+                        options=api.RunOptions(
+                            timeout_seconds=args.timeout,
+                            cpus=args.cpus,
+                            memory_bytes=memory_bytes(args.memory)
+                            if args.memory is not None
+                            else None,
+                            network=args.network,
+                            max_log_bytes=args.max_log_bytes,
+                            max_runner_log_bytes=args.max_runner_log_bytes,
+                        ),
+                    )
+                    print(batch.model_dump_json(indent=None if args.json else 2))
+                    return (
+                        0 if batch.state == "complete" else 130 if batch.state == "cancelled" else 1
+                    )
+                if args.command == "evaluations":
+                    if args.evaluations_command == "list":
+                        batches = api.list_evaluations(
+                            root=root, model=args.model, limit=args.limit, offset=args.offset
+                        )
+                        print(batches.model_dump_json(indent=None if args.json else 2))
+                    else:
+                        batch = api.evaluation_batch(args.batch_id, root=root)
+                        print(batch.model_dump_json(indent=None if args.json else 2))
+                    return 0
                 if args.command == "models":
+                    if args.models_command == "evaluations":
+                        batches = api.list_evaluations(
+                            root=root, model=args.selector, limit=args.limit, offset=args.offset
+                        )
+                        print(batches.model_dump_json(indent=None if args.json else 2))
+                        return 0
                     if args.models_command == "get":
                         print(api.get_model(args.selector, root=root, output=args.output))
                         return 0

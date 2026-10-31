@@ -30,6 +30,18 @@ def git(root: Path, *arguments: str) -> bytes:
     return subprocess.run(["git", *arguments], cwd=root, capture_output=True, check=True).stdout
 
 
+def archive_source(root: Path, files: list[Path], archive_path: Path) -> str:
+    with (
+        archive_path.open("wb") as output,
+        gzip.GzipFile(filename="", fileobj=output, mode="wb", mtime=0) as compressed,
+        tarfile.open(fileobj=compressed, mode="w", dereference=False) as archive,
+    ):
+        for path in files:
+            archive.add(root / path, arcname=path.as_posix(), recursive=False)
+    with archive_path.open("rb") as source:
+        return hashlib.file_digest(source, "sha256").hexdigest()
+
+
 def capture(root: Path, run_dir: Path, files: list[Path]) -> tuple[GitProvenance, SourceInputs]:
     revision = subprocess.run(
         ["git", "rev-parse", "--verify", "HEAD"], cwd=root, capture_output=True, check=False
@@ -61,15 +73,7 @@ def capture(root: Path, run_dir: Path, files: list[Path]) -> tuple[GitProvenance
     (run_dir / "changes.patch").write_bytes(patch)
     tracked = set(git(root, "ls-files", "--cached", "-z").decode("utf-8").split("\0"))
     archive_path = run_dir / "source.tar.gz"
-    with (
-        archive_path.open("wb") as output,
-        gzip.GzipFile(filename="", fileobj=output, mode="wb", mtime=0) as compressed,
-        tarfile.open(fileobj=compressed, mode="w", dereference=False) as archive,
-    ):
-        for path in files:
-            archive.add(root / path, arcname=path.as_posix(), recursive=False)
-    with archive_path.open("rb") as source:
-        source_sha256 = hashlib.file_digest(source, "sha256").hexdigest()
+    source_sha256 = archive_source(root, files, archive_path)
     return (
         GitProvenance(
             commit=commit,

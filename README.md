@@ -119,6 +119,8 @@ The documentation sources are linked below.
 | [Script artifact SDK](docs/script-artifacts.rst) | Managed outputs, atomic saves and verified read-only input handoff |
 | [Python API](docs/api.rst) | Signatures, options, returns, errors and output callbacks |
 | [Run and CLI reference](docs/runs.rst) | Commands, limits, provenance, retrieval and recovery |
+| [Models](docs/models.rst) | Discover, register, inspect and retrieve exact model versions |
+| [Evaluation batches](docs/evaluations.rst) | Evaluate saved models with frozen source and inspect results |
 | [Run storage](docs/storage.rst) | Verified local/S3 publication, retrieval, retries and credentials |
 | [Agent benchmarks](docs/benchmarks.rst) | Matched trials, private scoring and reporting |
 | [Development](docs/development.rst) | Checks, schemas, packaging and contributions |

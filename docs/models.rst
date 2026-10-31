@@ -10,6 +10,7 @@ Docker or ML packages and never deserialize model files or import experiment cod
     mlef models register RUN/train/model --name churn-classifier
     mlef models list --json
     mlef models show churn-classifier@VERSION --json
+    mlef models evaluations churn-classifier@VERSION --json
     mlef models get churn-classifier@VERSION --output saved-model
 
 Replace RUN with a complete run UUID and VERSION with the complete version hash
@@ -77,8 +78,9 @@ the retrieved inventory. Existing destinations are refused.
 Versions reference existing run storage; they do not duplicate model bytes.
 Deleting or moving the containing run can make retrieval unavailable while the
 descriptor remains inspectable. Existing run publish/fetch does not transfer the
-model catalog; catalog portability, aliases, evaluation history per model and
-reference-protected deletion remain planned platform features. No command in
+model catalog; catalog portability, aliases and reference-protected deletion
+remain planned platform features. :doc:`evaluations` records batch history by
+exact model selector. No command in
 this initial catalog deletes models or runs.
 
 Python API

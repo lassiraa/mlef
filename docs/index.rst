@@ -56,6 +56,7 @@ Guides and reference
    script-artifacts
    runs
    models
+   evaluations
    storage
    benchmarks
    development

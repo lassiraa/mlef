@@ -6,6 +6,7 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from pathlib import Path
 from uuid import uuid4
 
@@ -28,6 +29,26 @@ def setup(project: Path) -> None:
     initialize(project)
     for name in ("pyproject.toml", "uv.lock"):
         (project / name).write_bytes((LOCKED / name).read_bytes())
+
+
+def test_real_frozen_multi_model_evaluation(
+    project: Path,
+    evaluation_project: Callable[[str], tuple[Path, list[str]]],
+) -> None:
+    trained = api.run()
+    assert trained.state == "succeeded"
+    definition, models = evaluation_project(trained.id)
+    batch = api.evaluate(definition, models)
+    assert batch.state == "complete", batch.model_dump_json()
+    assert len(batch.evaluations) == 2
+    assert [
+        item.metrics[0].metrics.values["mae"].model_dump()["value"] for item in batch.evaluations
+    ] == [1, 0]
+    for item in batch.evaluations:
+        assert api.pipeline_status(item.run_id, verify=True).order == ["evaluate"]
+        context = json.loads((project / ".mlef/runs" / item.run_id / "evaluation.json").read_text())
+        assert context["protocol_id"] == batch.protocol_id
+        assert context["model"]["version"] == item.model.version
 
 
 def test_real_cross_run_evaluation_without_training(project: Path) -> None:

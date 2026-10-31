@@ -40,6 +40,7 @@ class Request(Contract):
     resume: bool = False
     cache_from: str | None = None
     force: list[str] = Field(default_factory=list)
+    source_snapshot: str | None = None
 
 
 def identity(root: Path, identifier: str, token: str) -> Runtime:
@@ -293,6 +294,9 @@ def main() -> None:
             resume=request.resume,
             cache_from=request.cache_from,
             force=request.force,
+            _source_snapshot=Path(request.source_snapshot)
+            if request.source_snapshot is not None
+            else None,
             cpus=request.limits.cpus,
             memory=request.limits.memory_bytes,
             network=request.limits.network,

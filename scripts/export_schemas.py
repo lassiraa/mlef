@@ -9,6 +9,7 @@ from mlef.artifacts import ArtifactManifest, CustomType
 from mlef.benchmark import HoldoutScore, TabularTrial
 from mlef.comparison import Comparison
 from mlef.environment import Environment
+from mlef.evaluations import EvaluationBatch, EvaluationListing, EvaluationSpec
 from mlef.evidence import Result
 from mlef.execution import CacheDecision, PipelineRecord, StepFingerprint
 from mlef.inspection import RunMetrics
@@ -47,6 +48,9 @@ def main() -> None:
         ("step-result-v1", StepResult),
         ("pipeline-v1", PipelineDefinition),
         ("pipeline-v2", PipelineDefinition),
+        ("evaluation-spec-v1", EvaluationSpec),
+        ("evaluation-batch-v1", EvaluationBatch),
+        ("evaluation-listing-v1", EvaluationListing),
         ("pipeline-validation-v1", ValidationReport),
         ("pipeline-run-v1", PipelineRecord),
         ("step-fingerprint-v1", StepFingerprint),
