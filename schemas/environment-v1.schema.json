@@ -118,6 +118,11 @@
           "title": "Filename",
           "type": "string"
         },
+        "pipeline_reuse": {
+          "default": false,
+          "title": "Pipeline Reuse",
+          "type": "boolean"
+        },
         "sha256": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Sha256",

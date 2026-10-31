@@ -144,6 +144,7 @@ class SdkWheel(Contract):
     version: str = Field(pattern=r"^[A-Za-z0-9_.]+$")
     filename: str = Field(pattern=r"^mlef-[A-Za-z0-9_.]+-py3-none-any\.whl$")
     sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    pipeline_reuse: bool = False
 
     @model_validator(mode="after")
     def filename_version(self) -> Self:

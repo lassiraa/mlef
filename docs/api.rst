@@ -51,6 +51,10 @@ from ``mlef.execution`` without executing code or requiring Docker. Use
 ``verify=True`` to check saved source/SDK bytes, completed output inventories and
 input producer wiring, and to reject runs with resource cleanup pending. See
 :doc:`pipelines` for the locked environment requirements and managed script context.
+For explicit pipeline reuse, pass ``reuse_from=RUN`` and ``from_step=STEP``
+together. ``resume=True`` retains the original captured source and SDK instead
+of capturing the current checkout. Each operation creates a new self-contained
+run; it never overwrites or silently repairs the source run.
 
 Calls block until execution and finalization finish, and produce no console output.
 Script failures, timeouts and Ctrl+C return their saved failed/cancelled status;

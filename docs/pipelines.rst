@@ -92,8 +92,8 @@ processes within one container and one environment. The runner verifies each
 script's captured hash before launching it. Inputs are verified read-only copies
 from exact completed producers; absent optional outputs leave optional inputs
 unbound. Each step currently has one attempt. There is no parallel scheduler,
-automatic retry, implicit ingestion fallback or artifact reuse in this execution
-path.
+automatic retry or implicit ingestion fallback. Artifact reuse is explicit, as
+described below.
 
 A managed save stays pending even after a clean context exit. Only the runner
 publishes it after the **whole script process** exits successfully and required
@@ -113,6 +113,58 @@ cleanup pending; do not treat last-recorded liveness as proof that work stopped.
 Scripts are trusted, not sandboxed from one another or from their own writable
 artifact storage. Hard artifact quotas and arbitrary delayed-engine work remain
 outside these controls; see :doc:`runs`.
+
+Explicit reuse and resume
+-------------------------
+
+To change training without running ingestion again, edit the training script and
+fork from an existing local run:
+
+.. code-block:: text
+
+    mlef run --reuse-from RUN --from-step train
+    mlef run --reuse-from RUN --from-step train --resume
+
+The first command captures the current checkout and SDK. The second creates a
+new run from the source run's original source archive, dependency lock and SDK
+wheel, ignoring live script/definition edits or deletions. It does not restore an
+old container: base images are resolved and the locked environment is rebuilt by
+the normal runner. Resume rejects ``--include`` and requires a captured SDK that
+supports reuse. Older pipeline runs remain inspectable and can supply artifacts
+to a fork, but cannot be resumed with a pre-reuse SDK.
+
+Both commands require ``--reuse-from`` and ``--from-step`` together. The named
+step and all its transitive consumers execute. Every other step, including
+independent branches, must have a completed, verified attempt in the source run.
+Selection follows dependencies, not positions in the TOML file. The source run
+must be terminal and have no active owner or pending resource cleanup; recover
+abandoned executions first. Failed and cancelled runs may supply completed
+upstream attempts, never failed/partial attempts.
+
+Before building the environment, MLEF verifies the saved source/SDK bytes,
+contracts, script identities, output inventories and producer wiring. Reused
+steps must retain their declarations, direct script hash and input bindings.
+Changed downstream scripts are allowed in a fork. This is an explicit request to
+freeze selected outputs, not a claim that changed helpers or environments would
+produce identical outputs. There is no automatic cache or fallback to ingestion.
+Missing, corrupt or incompatible reuse fails preparation instead of executing
+the step again. To rerun ingestion explicitly, select ``--from-step ingest``.
+
+Reused output directories and their manifests are copied, not linked, into the
+new run and verified again. No source-run paths or cloud credentials are stored.
+Original producer references and step-result run IDs are retained, including
+through chains of forks; newly executed steps refer to these original producers.
+The new pipeline records ``reuse_from``, ``from_step``, ``resume`` and each copied
+attempt's ``reused_from`` run ID. The new run is self-contained for downstream
+execution and verification even if the source run is moved or removed. Reused
+attempts retain their original timestamps, not a new process execution time.
+
+Python uses the same selection and validation:
+
+.. code-block:: python
+
+    fork = api.run(reuse_from=previous.id, from_step="train")
+    resumed = api.run(reuse_from=previous.id, from_step="train", resume=True)
 
 Inspection and example
 ----------------------

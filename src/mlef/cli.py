@@ -80,6 +80,9 @@ def main(argv: list[str] | None = None) -> int:
     execute.add_argument("--include", action="append", default=[], type=Path, metavar="PATH")
     execute.add_argument("--output", action="append", default=[], type=Path, metavar="DIRECTORY")
     execute.add_argument("--experiment", type=Path, metavar="JSON_FILE")
+    execute.add_argument("--reuse-from", metavar="RUN_ID")
+    execute.add_argument("--from-step", metavar="STEP")
+    execute.add_argument("--resume", action="store_true")
     execute.add_argument("--timeout", type=float, metavar="SECONDS")
     execute.add_argument("--cpus", type=float)
     execute.add_argument("--memory")
@@ -251,6 +254,9 @@ def main(argv: list[str] | None = None) -> int:
             or args.cpus is not None
             or args.memory is not None
             or args.network != "default"
+            or args.reuse_from is not None
+            or args.from_step is not None
+            or args.resume
         ):
             return run(
                 root,
@@ -265,6 +271,9 @@ def main(argv: list[str] | None = None) -> int:
                 network=args.network,
                 max_log_bytes=args.max_log_bytes,
                 max_runner_log_bytes=args.max_runner_log_bytes,
+                reuse_from=args.reuse_from,
+                from_step=args.from_step,
+                resume=args.resume,
             )
         if args.experiment is not None:
             return run(

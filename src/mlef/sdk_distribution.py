@@ -21,7 +21,10 @@ def capture_sdk(directory: Path) -> SdkWheel:
     if metadata is None:
         raise ValueError("The installed SDK has no distribution metadata.")
     identity = SdkWheel(
-        version=version, filename=f"mlef-{version}-py3-none-any.whl", sha256="0" * 64
+        version=version,
+        filename=f"mlef-{version}-py3-none-any.whl",
+        sha256="0" * 64,
+        pipeline_reuse=True,
     )
     package = Path(__file__).parent
     contents = {}

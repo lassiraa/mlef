@@ -35,6 +35,9 @@ class Request(Contract):
     max_log_bytes: int | None = Field(default=None, gt=0)
     max_runner_log_bytes: int | None = Field(default=None, gt=0)
     quiet: bool = False
+    reuse_from: str | None = None
+    from_step: str | None = None
+    resume: bool = False
 
 
 def identity(root: Path, identifier: str, token: str) -> Runtime:
@@ -283,6 +286,9 @@ def main() -> None:
             timeout=request.timeout,
             _identifier=request.identifier,
             _token=request.token,
+            reuse_from=request.reuse_from,
+            from_step=request.from_step,
+            resume=request.resume,
             cpus=request.limits.cpus,
             memory=request.limits.memory_bytes,
             network=request.limits.network,
