@@ -15,6 +15,8 @@ from .environment import file_hash
 from .events import Delivery, LogEvent
 from .evidence import Result, read_result
 from .execution import PipelineRecord, read_pipeline, verify_source_archive
+from .inspection import RunMetrics
+from .inspection import run_metrics as _run_metrics
 from .limits import Limits
 from .pipeline import ValidationReport
 from .pipeline import validate as _validate
@@ -34,6 +36,7 @@ __all__ = [
     "MlefError",
     "RunHistory",
     "RunListing",
+    "RunMetrics",
     "RunOptions",
     "RunStatus",
     "artifacts",
@@ -49,6 +52,7 @@ __all__ = [
     "recover",
     "run",
     "run_history",
+    "run_metrics",
     "status",
     "tabular_diagnostics",
     "tabular_profile",
@@ -101,6 +105,26 @@ class RunHistory(RunListing):
     schema_version: Literal[1] = 1
     total: int
     next_offset: int | None
+
+
+@_translated
+def run_metrics(
+    identifier: str,
+    *,
+    step: str | None = None,
+    scope: str | None = None,
+    metric: str | None = None,
+    max_bytes: int = 32 * 1024 * 1024,
+    root: Path | str | None = None,
+) -> RunMetrics:
+    return _run_metrics(
+        project_root(root),
+        identifier,
+        step=step,
+        scope=scope,
+        metric=metric,
+        max_bytes=max_bytes,
+    )
 
 
 @_translated

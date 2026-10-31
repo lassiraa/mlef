@@ -11,6 +11,7 @@ from mlef.comparison import Comparison
 from mlef.environment import Environment
 from mlef.evidence import Result
 from mlef.execution import CacheDecision, PipelineRecord, StepFingerprint
+from mlef.inspection import RunMetrics
 from mlef.metrics import ExternalMetric, Metrics
 from mlef.pipeline import PipelineDefinition, Step, ValidationReport
 from mlef.records import Experiment, RunRecord
@@ -31,6 +32,7 @@ def main() -> None:
     root.mkdir(exist_ok=True)
     schemas = [
         ("run-history-v1", RunHistory),
+        ("run-metrics-v1", RunMetrics),
         ("artifact-v1", ArtifactManifest),
         ("custom-type-v1", CustomType),
         ("tabular-bundle-v1", TabularBundle),

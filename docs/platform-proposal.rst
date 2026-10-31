@@ -1,8 +1,11 @@
 ML platform functionality proposal
 ==================================
 
-Status: draft requirements. Commands and contracts below are proposed, not
-implemented. This proposal extends the local, file-backed execution model.
+Status: draft requirements. Commands and contracts below are proposed unless
+documented in :doc:`runs`. Filtered/paginated history, run and step details, and
+root/pipeline metric inspection are implemented initial slices. Experiment
+grouping, model registration and multi-model evaluation remain planned.
+This proposal extends the local, file-backed execution model.
 
 The intended workflow is: find previous experiments, inspect their models and
 metrics, evaluate selected model versions under one saved protocol, compare the

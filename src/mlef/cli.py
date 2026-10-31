@@ -60,6 +60,13 @@ def main(argv: list[str] | None = None) -> int:
     history_list.add_argument("--limit", type=int, default=50)
     history_list.add_argument("--offset", type=int, default=0)
     history_list.add_argument("--json", action="store_true")
+    metric_query = history_commands.add_parser("metrics")
+    metric_query.add_argument("run_id")
+    metric_query.add_argument("--step")
+    metric_query.add_argument("--scope")
+    metric_query.add_argument("--metric")
+    metric_query.add_argument("--max-bytes", type=int, default=32 * 1024 * 1024)
+    metric_query.add_argument("--json", action="store_true")
     for name in ["show", "steps"]:
         detail = history_commands.add_parser(name)
         detail.add_argument("run_id")
@@ -165,6 +172,16 @@ def main(argv: list[str] | None = None) -> int:
                             f"{len(result.runs)} of {result.total} runs; "
                             f"next offset: {result.next_offset}"
                         )
+                elif args.runs_command == "metrics":
+                    metrics = api.run_metrics(
+                        args.run_id,
+                        root=root,
+                        step=args.step,
+                        scope=args.scope,
+                        metric=args.metric,
+                        max_bytes=args.max_bytes,
+                    )
+                    print(metrics.model_dump_json(indent=None if args.json else 2))
                 elif args.runs_command == "steps":
                     pipeline = api.pipeline_status(args.run_id, root=root)
                     if args.json:

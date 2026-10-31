@@ -25,6 +25,31 @@ pipeline record and requires a captured pipeline run. Queries never start Docker
 Python callers use ``api.run_history`` with the same filters and pagination.
 The existing ``list`` JSON array and ``status`` response remain unchanged.
 
+Inspect root and completed pipeline metric evidence together:
+
+.. code-block:: text
+
+    mlef runs metrics RUN --json
+    mlef runs metrics RUN --step evaluate --scope test --metric mae --json
+
+``api.run_metrics(RUN, step=None, scope=None, metric=None)`` returns the same
+versioned envelope. ``root`` retains legacy result evidence, including missing or
+invalid status; it is omitted when filtering by step or scope because legacy
+metrics have no verified step/scope identity. ``artifacts`` contains structured
+metric envelopes with step, output and exact producer references. Name filters
+return every matching qualified artifact rather than choosing an ambiguous score.
+No ranking or comparison is implied.
+
+Pipeline queries verify completed output inventories, contracts and wiring.
+Incomplete attempts produce diagnostics; corrupt evidence fails the query.
+JSON metric artifacts must contain one payload file. Each payload is limited to
+32 MiB by default (``--max-bytes`` / ``max_bytes``), checked again against saved
+size and checksum after reading. This is a per-payload limit, not a total memory
+or I/O quota; inventory verification still reads saved output bytes. External
+metric references remain compact and are never resolved automatically. These
+queries do not verify source archives or rerun evaluators; use
+``api.pipeline_status(RUN, verify=True)`` for full captured-source verification.
+
 Run commands from the experiment's Git root. Replace RUN, BASELINE and CANDIDATE
 with complete UUID4 identifiers printed by MLEF. Use ``mlef COMMAND --help``
 for argument help.
