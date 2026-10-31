@@ -1,9 +1,10 @@
 Artifact and metric contracts
 =============================
 
-These contracts describe evidence. They do not yet provide pipeline execution,
-artifact saving, automatic metric calculation or S3 storage. Existing script
-execution and historical run readers are unchanged.
+These contracts describe evidence. The explicit local SDK in :doc:`script-artifacts`
+saves and verifies artifacts using these contracts. Pipeline execution, automatic
+metric calculation and S3 storage are not yet provided. Existing script execution
+and historical run readers are unchanged.
 
 Artifact manifests
 ------------------

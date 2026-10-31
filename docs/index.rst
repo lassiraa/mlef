@@ -53,6 +53,7 @@ Guides and reference
    api
    artifacts
    pipelines
+   script-artifacts
    runs
    benchmarks
    development

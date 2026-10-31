@@ -1,16 +1,21 @@
 """Declarative script contracts and static, non-executing pipeline validation."""
 
+from __future__ import annotations
+
 import ast
 import heapq
 import json
 import tomllib
 from pathlib import Path
-from typing import Annotated, Literal, Self
+from typing import TYPE_CHECKING, Annotated, Literal, Self
 
 from pydantic import Field, JsonValue, field_validator, model_validator
 
 from .artifacts import ArtifactType, safe_path
 from .records import Contract
+
+if TYPE_CHECKING:
+    from .sdk import Artifact, ArtifactSource, LocalContext, StepResult
 
 Name = Annotated[str, Field(pattern=r"^[A-Za-z][A-Za-z0-9_-]*$")]
 Status = Literal["verified", "invalid", "deferred"]
@@ -43,6 +48,23 @@ class Step(Contract):
             if len(set(names)) != len(names):
                 raise ValueError("Input and output names must each be unique within a step.")
         return self
+
+    def local(
+        self,
+        directory: Path,
+        *,
+        inputs: dict[str, ArtifactSource] | None = None,
+        run_id: str | None = None,
+    ) -> LocalContext:
+        from .sdk import LocalContext
+
+        arguments = {} if run_id is None else {"run_id": run_id}
+        return LocalContext(
+            directory=directory, step=self, inputs=inputs or {}, **arguments
+        ).prepare()
+
+    def save(self, artifacts: list[Artifact], *, context: LocalContext) -> StepResult:
+        return context.save(self, artifacts)
 
 
 class PipelineStep(Contract):

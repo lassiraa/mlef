@@ -6,7 +6,13 @@ Python API reference
 Python callers can use the supported synchronous ``mlef.api`` entry points.
 For non-executing script contract and wiring checks, see ``api.validate`` in
 :doc:`pipelines`. It returns a versioned validation report without requiring
-initialized run storage or Docker. For execution:
+initialized run storage or Docker.
+
+The root ``mlef`` package also exports ``Step``, ``Input``, ``Output``, ``Artifact``
+and the local persistence helpers documented in :doc:`script-artifacts`. Those
+explicit contexts are independent of the supervised ``api.run`` operations.
+
+For supervised execution:
 
 .. code-block:: python
 

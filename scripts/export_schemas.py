@@ -12,6 +12,7 @@ from mlef.evidence import Result
 from mlef.metrics import Metrics
 from mlef.pipeline import PipelineDefinition, Step, ValidationReport
 from mlef.records import Experiment, RunRecord
+from mlef.sdk import StepResult
 from mlef.tabular import Evaluation as TabularEvaluation
 from mlef.tabular import Profile, Protocol
 from mlef.tabular_comparison import TabularComparison
@@ -28,6 +29,7 @@ def main() -> None:
         ("artifact-v1", ArtifactManifest),
         ("metrics-v1", Metrics),
         ("step-v1", Step),
+        ("step-result-v1", StepResult),
         ("pipeline-v1", PipelineDefinition),
         ("pipeline-validation-v1", ValidationReport),
         ("run-v3", RunRecord),

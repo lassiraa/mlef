@@ -1,0 +1,613 @@
+{
+  "$defs": {
+    "ArtifactFile": {
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "size_bytes",
+        "sha256"
+      ],
+      "title": "ArtifactFile",
+      "type": "object"
+    },
+    "ArtifactManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "files": {
+          "items": {
+            "$ref": "#/$defs/ArtifactFile"
+          },
+          "minItems": 1,
+          "title": "Files",
+          "type": "array"
+        },
+        "format": {
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "metadata": {
+          "discriminator": {
+            "mapping": {
+              "dataset": "#/$defs/DatasetMetadata",
+              "generic": "#/$defs/GenericMetadata",
+              "model": "#/$defs/ModelMetadata",
+              "predictions": "#/$defs/PredictionsMetadata",
+              "split": "#/$defs/SplitMetadata"
+            },
+            "propertyName": "kind"
+          },
+          "oneOf": [
+            {
+              "$ref": "#/$defs/DatasetMetadata"
+            },
+            {
+              "$ref": "#/$defs/SplitMetadata"
+            },
+            {
+              "$ref": "#/$defs/PredictionsMetadata"
+            },
+            {
+              "$ref": "#/$defs/ModelMetadata"
+            },
+            {
+              "$ref": "#/$defs/GenericMetadata"
+            }
+          ],
+          "title": "Metadata"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "producer": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "type": {
+          "$ref": "#/$defs/ArtifactType"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "format",
+        "files"
+      ],
+      "title": "ArtifactManifest",
+      "type": "object"
+    },
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "An exact producer reference, never a mutable latest alias or storage URI.",
+      "properties": {
+        "output": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Output",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "step": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "step",
+        "output",
+        "sha256"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ArtifactType": {
+      "enum": [
+        "file",
+        "directory",
+        "table",
+        "dataset",
+        "split",
+        "predictions",
+        "model",
+        "checkpoint",
+        "metrics",
+        "parameters",
+        "schema",
+        "array",
+        "embeddings",
+        "index",
+        "plot",
+        "report",
+        "text",
+        "image",
+        "audio",
+        "video",
+        "annotations",
+        "explanations",
+        "archive"
+      ],
+      "title": "ArtifactType",
+      "type": "string"
+    },
+    "Column": {
+      "additionalProperties": false,
+      "properties": {
+        "dtype": {
+          "minLength": 1,
+          "title": "Dtype",
+          "type": "string"
+        },
+        "name": {
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "nullable": {
+          "default": true,
+          "title": "Nullable",
+          "type": "boolean"
+        },
+        "role": {
+          "default": "feature",
+          "enum": [
+            "feature",
+            "target",
+            "row_id",
+            "group",
+            "time",
+            "auxiliary"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "dtype"
+      ],
+      "title": "Column",
+      "type": "object"
+    },
+    "DatasetMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/Column"
+          },
+          "minItems": 1,
+          "title": "Columns",
+          "type": "array"
+        },
+        "kind": {
+          "const": "dataset",
+          "default": "dataset",
+          "title": "Kind",
+          "type": "string"
+        },
+        "row_id": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Row Id",
+          "type": "array"
+        },
+        "rows": {
+          "minimum": 0,
+          "title": "Rows",
+          "type": "integer"
+        },
+        "statistics": {
+          "default": "omitted",
+          "enum": [
+            "omitted",
+            "exact",
+            "sampled",
+            "unavailable"
+          ],
+          "title": "Statistics",
+          "type": "string"
+        }
+      },
+      "required": [
+        "rows",
+        "columns",
+        "row_id"
+      ],
+      "title": "DatasetMetadata",
+      "type": "object"
+    },
+    "GenericMetadata": {
+      "additionalProperties": false,
+      "description": "Specialized metadata can be introduced without changing file storage.",
+      "properties": {
+        "kind": {
+          "const": "generic",
+          "default": "generic",
+          "title": "Kind",
+          "type": "string"
+        }
+      },
+      "title": "GenericMetadata",
+      "type": "object"
+    },
+    "Input": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/ArtifactType"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "Input",
+      "type": "object"
+    },
+    "ModelMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "framework": {
+          "minLength": 1,
+          "title": "Framework",
+          "type": "string"
+        },
+        "framework_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Framework Version"
+        },
+        "kind": {
+          "const": "model",
+          "default": "model",
+          "title": "Kind",
+          "type": "string"
+        },
+        "serialization": {
+          "minLength": 1,
+          "title": "Serialization",
+          "type": "string"
+        },
+        "training_dataset": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "framework",
+        "serialization"
+      ],
+      "title": "ModelMetadata",
+      "type": "object"
+    },
+    "Output": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/ArtifactType"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "format"
+      ],
+      "title": "Output",
+      "type": "object"
+    },
+    "PredictionsMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "class_order": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Class Order"
+        },
+        "dataset": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "kind": {
+          "const": "predictions",
+          "default": "predictions",
+          "title": "Kind",
+          "type": "string"
+        },
+        "model": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "row_id": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Row Id",
+          "type": "array"
+        },
+        "scope": {
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        },
+        "split": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactRef"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "task": {
+          "minLength": 1,
+          "title": "Task",
+          "type": "string"
+        },
+        "value_columns": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Value Columns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "dataset",
+        "model",
+        "task",
+        "row_id",
+        "value_columns",
+        "scope"
+      ],
+      "title": "PredictionsMetadata",
+      "type": "object"
+    },
+    "SplitMetadata": {
+      "additionalProperties": false,
+      "properties": {
+        "assignments_file": {
+          "title": "Assignments File",
+          "type": "string"
+        },
+        "dataset": {
+          "$ref": "#/$defs/ArtifactRef"
+        },
+        "kind": {
+          "const": "split",
+          "default": "split",
+          "title": "Kind",
+          "type": "string"
+        },
+        "seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Seed"
+        },
+        "strategy": {
+          "minLength": 1,
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "dataset",
+        "strategy",
+        "assignments_file"
+      ],
+      "title": "SplitMetadata",
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/Input"
+          },
+          "title": "Inputs",
+          "type": "array"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "outputs": {
+          "items": {
+            "$ref": "#/$defs/Output"
+          },
+          "minItems": 1,
+          "title": "Outputs",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "outputs"
+      ],
+      "title": "Step",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifacts": {
+      "patternProperties": {
+        "^[A-Za-z][A-Za-z0-9_-]*$": {
+          "$ref": "#/$defs/ArtifactManifest"
+        }
+      },
+      "title": "Artifacts",
+      "type": "object"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "inputs": {
+      "patternProperties": {
+        "^[A-Za-z][A-Za-z0-9_-]*$": {
+          "$ref": "#/$defs/ArtifactRef"
+        }
+      },
+      "title": "Inputs",
+      "type": "object"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "state": {
+      "enum": [
+        "running",
+        "complete",
+        "failed"
+      ],
+      "title": "State",
+      "type": "string"
+    },
+    "step": {
+      "$ref": "#/$defs/Step"
+    }
+  },
+  "required": [
+    "run_id",
+    "step",
+    "state"
+  ],
+  "title": "StepResult",
+  "type": "object"
+}

@@ -5,8 +5,8 @@ Pipelines describe named script steps and their typed input/output wiring.
 ``mlef validate`` checks these contracts without importing scripts, executing
 top-level code, installing dependencies or starting Docker. It creates no run
 storage. Existing ``mlef run script.py`` and historical run readers are unchanged.
-This release validates definitions only; pipeline execution and artifact saving
-are not yet implemented.
+Pipeline execution is not yet implemented. Scripts can already save typed outputs
+and bind verified local inputs using the explicit SDK in :doc:`script-artifacts`.
 
 Script declarations
 -------------------
