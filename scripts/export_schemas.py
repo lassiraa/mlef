@@ -16,6 +16,7 @@ from mlef.records import Experiment, RunRecord
 from mlef.sdk import StepResult
 from mlef.tabular import Evaluation as TabularEvaluation
 from mlef.tabular import Profile, Protocol
+from mlef.tabular_artifacts import CvRecipe, TabularBundle
 from mlef.tabular_comparison import TabularComparison
 from mlef.tabular_diagnostics import Diagnostics
 
@@ -28,6 +29,8 @@ def main() -> None:
     root.mkdir(exist_ok=True)
     for name, model in [
         ("artifact-v1", ArtifactManifest),
+        ("tabular-bundle-v1", TabularBundle),
+        ("tabular-cv-recipe-v1", CvRecipe),
         ("metrics-v1", Metrics),
         ("step-v1", Step),
         ("step-result-v1", StepResult),

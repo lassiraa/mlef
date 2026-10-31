@@ -141,6 +141,81 @@ Inference writes ``prediction`` for regression and ``positive_probability`` for
 classification. Early-stopping XGBoost must be the final estimator directly or
 inside a Pipeline; arbitrary nested early-stopping wrappers are unsupported.
 
+Shared script artifacts
+------------------------
+
+Export a successful evaluation into the same typed artifacts that ordinary
+scripts consume with ``Step.local`` / ``load_artifacts``:
+
+.. code-block:: text
+
+    mlef tabular export RUN --data public.csv --output .mlef/shared/RUN --profile
+
+.. code-block:: python
+
+    from pathlib import Path
+    from mlef import api, tabular, load_artifacts
+
+    bundle = api.export_tabular_artifacts(
+        run.id, "public.csv", ".mlef/shared/" + run.id, profile=True,
+    )
+    verified = tabular.read_artifacts(Path(".mlef/shared") / run.id)
+    inputs = load_artifacts(Path(".mlef/shared") / run.id / "predictions")
+
+The explicit CSV must match the captured protocol's dataset hash and ordered,
+unique row IDs. Prediction labels must agree with that public CSV, not only with
+the reported score. Export reads only that CSV and the named run's saved evidence;
+it never discovers datasets, reads private held-out labels, imports ML libraries
+or deserializes fitted models. Successful execution, complete folds and completed
+resource cleanup are required. Destinations must not exist. Historical version-1
+evaluations are adapted without modifying their source run.
+
+A bundle contains ``evaluation.json``, a final ``bundle.json`` publication marker,
+and five completed SDK step directories: ``dataset``, ``split``, ``model``,
+``predictions`` and ``metrics``. Each has ``step.json`` and managed input/output
+directories. The artifact types use ``mlef.tabular-NAME-v1`` formats. The dataset
+contains the original ``data.csv``; split assignments explicitly persist fold,
+row ID and train/score roles. Metadata records original data-byte and sorted-row-ID
+hashes, dataset/model/split links, OOF prediction scope and binary class order
+``[negative_label, positive_label]``. The one probability column refers to the
+second class; regression has no class order and retains original target units.
+The row identity hash uses the UTF-8 JSON array of sorted row IDs, ASCII-escaped
+and without whitespace; the dataset hash uses the unchanged CSV bytes.
+All producer references retain the source run ID and ``tabular_NAME`` step names.
+
+The ``model`` output is a **CV recipe descriptor**, not a fitted estimator. Its
+``mlef.tabular-cv-recipe-v1`` serialization records parameters, actual inner-fit
+assignments when available, protocol identity and source-evaluation hash. OOF
+predictions link to this recipe, never falsely to the separately refitted model.
+Existing ``model.joblib`` / ``model-recipe.json`` inference workflows are unchanged;
+they are not loaded or bundled by the offline exporter.
+
+Profiles are omitted by default. ``--profile`` adds exact missing/distinct counts
+for at most 20 columns, truncated names (200 characters) with full-name hashes,
+rows examined and omitted-column counts, never raw values or example rows. Shared
+profile contracts also describe sampled summaries with required sampling seed and
+sampled-row identity; this exporter does not sample automatically. Dataset metadata
+does not replace byte/row verification. Each parsed/exported payload is limited to
+32 MiB; large-data streaming and arbitrary custom formats remain separate work.
+
+``tabular.read_artifacts`` rechecks bytes, contracts, producer wiring, public row
+truth, full split assignments, class ordering, prediction coverage, recipe links
+and structured metrics. The bundle remains verifiable after moving it or removing
+the source run/CSV. Export never overwrites or repairs prior evidence; failed
+exports may leave diagnostic directories without a publication marker. Treat
+bundle verification, not the existence of an individual directory, as publication.
+Both binary and regression demo modes now export these bundles under
+``.mlef/tabular-artifacts/RUN`` for every successful candidate.
+
+New evaluations include a structured ``metric_evidence`` payload in addition to
+legacy numeric ``metrics.json``. Comparison checks scope, definition/version,
+units, aggregation, sample counts, dimensions and parameters after matching the
+actual dataset/folds; equal metric names alone are insufficient. One historical
+run without these declarations and one new run produce ``unknown`` rather than
+an inferred winner. Two historical runs retain the prior built-in comparison.
+Export can reconstruct the built-in ROC AUC/RMSE evidence from verified historical
+folds, but does not invent custom metric definitions or independent attestations.
+
 Profiles and agent feedback
 ---------------------------
 

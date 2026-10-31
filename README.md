@@ -72,7 +72,8 @@ output = Path(os.environ["MLEF_OUTPUT_DIR"])
 
 The [tabular demo](examples/sklearn/demo.py) prepares folds once, evaluates
 baseline and candidate models, compares predictions, refits the selected candidate
-and retrieves a model plus inference CSV. Begin in the MLEF checkout:
+and retrieves a model plus inference CSV. It also exports verified SDK dataset,
+split, CV recipe, prediction and metric artifacts for each candidate. Begin in the MLEF checkout:
 
 ```text
 python -c "import shutil; shutil.copytree('examples/sklearn', '../mlef-tabular-demo', ignore=shutil.ignore_patterns('.venv', '__pycache__'))"

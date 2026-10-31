@@ -2,9 +2,20 @@
 
 from pathlib import Path
 
+from .tabular_artifacts import TabularBundle, read_artifacts
 from .tabular_runtime import Evaluation, Fold, Prediction, Profile, Protocol, Split
 
-__all__ = ["Evaluation", "Fold", "Prediction", "Profile", "Protocol", "Split", "export_helper"]
+__all__ = [
+    "Evaluation",
+    "Fold",
+    "Prediction",
+    "Profile",
+    "Protocol",
+    "Split",
+    "TabularBundle",
+    "export_helper",
+    "read_artifacts",
+]
 
 
 def export_helper(destination: Path | str) -> Path:

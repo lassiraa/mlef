@@ -156,3 +156,31 @@ class Metrics(Contract):
         if any(not name.strip() for name in self.values):
             raise ValueError("Metric names must not be empty.")
         return self
+
+    def semantic_differences(self, other: "Metrics") -> list[str]:
+        differences = []
+        if self.scope != other.scope:
+            differences.append("Metric scopes differ.")
+        if self.values.keys() != other.values.keys():
+            differences.append("Metric names differ.")
+        for name in self.values.keys() & other.values.keys():
+            first, second = self.values[name], other.values[name]
+            attributes = [
+                *Metric.model_fields,
+                "kind",
+                "index",
+                "curve_type",
+                "x_label",
+                "y_label",
+                "row_axis",
+                "column_axis",
+                "row_labels",
+                "column_labels",
+                "columns",
+            ]
+            if any(
+                getattr(first, attribute, None) != getattr(second, attribute, None)
+                for attribute in attributes
+            ):
+                differences.append(f"Metric definitions, units or aggregation differ: {name}")
+        return differences

@@ -77,12 +77,49 @@ class Column(Contract):
     nullable: bool = True
 
 
+class ColumnStatistics(Contract):
+    name: str = Field(min_length=1, max_length=200)
+    name_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    missing: int = Field(ge=0)
+    distinct: int = Field(ge=0)
+
+
+class DatasetProfile(Contract):
+    method: Literal["exact", "sampled"]
+    rows_examined: int = Field(ge=0)
+    columns: list[ColumnStatistics] = Field(max_length=20)
+    omitted_columns: int = Field(ge=0)
+    sample_seed: int | None = None
+    sample_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+
+    @model_validator(mode="after")
+    def bounded(self) -> Self:
+        if len({column.name_sha256 for column in self.columns}) != len(self.columns):
+            raise ValueError("Profile column identities must be unique.")
+        if any(column.missing + column.distinct > self.rows_examined for column in self.columns):
+            raise ValueError("Column counts cannot exceed the examined row count.")
+        if (self.method == "sampled") != (
+            self.sample_seed is not None and self.sample_sha256 is not None
+        ) or (
+            self.method == "exact"
+            and (self.sample_seed is not None or self.sample_sha256 is not None)
+        ):
+            raise ValueError(
+                "Sampled profiles require seed and sampled-row identity; "
+                "exact profiles forbid them."
+            )
+        return self
+
+
 class DatasetMetadata(Contract):
     kind: Literal["dataset"] = "dataset"
     rows: int = Field(ge=0)
     columns: list[Column] = Field(min_length=1)
     row_id: list[str] = Field(min_length=1)
     statistics: Literal["omitted", "exact", "sampled", "unavailable"] = "omitted"
+    dataset_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    row_ids_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
+    profile: DatasetProfile | None = None
 
     @model_validator(mode="after")
     def column_names(self) -> Self:
@@ -91,6 +128,19 @@ class DatasetMetadata(Contract):
             raise ValueError("Dataset column names must be unique.")
         if len(set(self.row_id)) != len(self.row_id) or not set(self.row_id) <= set(names):
             raise ValueError("Row identity must name distinct existing columns.")
+        if self.profile is not None and (
+            self.profile.method != self.statistics
+            or self.profile.rows_examined > self.rows
+            or (self.profile.method == "exact" and self.profile.rows_examined != self.rows)
+            or len(self.profile.columns) + self.profile.omitted_columns != len(self.columns)
+        ):
+            raise ValueError("Dataset profile must match its method, rows and column count.")
+        if self.profile is not None:
+            expected = {hashlib.sha256(name.encode()).hexdigest(): name[:200] for name in names}
+            if any(
+                expected.get(column.name_sha256) != column.name for column in self.profile.columns
+            ):
+                raise ValueError("Profile column identities must match declared dataset columns.")
         return self
 
 
@@ -189,6 +239,10 @@ class ArtifactManifest(Contract):
     def content_sha256(self) -> str:
         """Hash semantic metadata and canonical inventory, excluding name/provenance."""
         content = self.model_dump(mode="json", exclude={"name", "producer"})
+        if isinstance(self.metadata, DatasetMetadata):
+            for extension in ("dataset_sha256", "row_ids_sha256", "profile"):
+                if content["metadata"][extension] is None:
+                    del content["metadata"][extension]
         content["files"] = [
             file.model_dump(mode="json") for file in sorted(self.files, key=lambda file: file.path)
         ]

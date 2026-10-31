@@ -299,6 +299,21 @@
       "title": "Folds",
       "type": "array"
     },
+    "metric_evidence": {
+      "anyOf": [
+        {
+          "additionalProperties": {
+            "$ref": "#/$defs/JsonValue"
+          },
+          "type": "object"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Metric Evidence"
+    },
     "model_artifact": {
       "anyOf": [
         {

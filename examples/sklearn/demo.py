@@ -81,6 +81,7 @@ def main() -> None:
         print(factory, result.id, result.state, result.result.metrics)
         if result.state != "succeeded":
             raise RuntimeError(result.model_dump_json())
+        api.export_tabular_artifacts(result.id, data, Path(".mlef/tabular-artifacts") / result.id)
         candidates[factory] = result
         if baseline is None:
             baseline = result.id
