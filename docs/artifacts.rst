@@ -121,4 +121,3 @@ schemas/artifact-v1.schema.json and schemas/metrics-v1.schema.json expose struct
 contracts. Pydantic additionally enforces cross-field invariants such as matrix
 shape, required metadata and producer content identity. JSON Schema alone cannot
 establish those invariants.
-
