@@ -56,6 +56,12 @@ def test_offline_api_matches_cli(
         cli("list", "--json").stdout
     )
     assert listing.diagnostics == []
+    assert api.run_metrics(first).root == api.status(first).result
+    filtered = api.run_metrics(first, metric="missing")
+    assert filtered.root is not None
+    assert filtered.root.metrics == {}
+    with pytest.raises(api.MlefError, match="no captured pipeline"):
+        api.run_metrics(first, step="evaluate")
     assert api.artifacts(first) == ["metrics.json"]
     retrieved = api.get(first, "metrics.json", output=project / "retrieved.json")
     assert json.loads(retrieved.read_text()) == {"score": 0.5}

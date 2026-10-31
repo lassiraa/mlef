@@ -758,6 +758,42 @@ def prepare(project: Path) -> Path:
     return directory
 
 
+def test_offline_pipeline_metric_inspection(
+    project: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from mlef.cli import main
+
+    setup(project)
+    directory = prepare(project)
+    assert execute_pipeline(project, directory) == 0
+    identifier = directory.parents[1].name
+    evidence = api.run_metrics(identifier, step="evaluate", scope="test", metric="mae")
+    # The scaffold declares test scope and retains the exact model reference.
+    assert len(evidence.artifacts) == 1
+    artifact = evidence.artifacts[0]
+    assert artifact.metrics.values["mae"].model_dump()["value"] == 3
+    assert artifact.metrics.model is not None
+    assert artifact.producer.step == "evaluate"
+    assert evidence.root is None
+    assert api.run_metrics(identifier, scope="validation").artifacts == []
+    assert api.run_metrics(identifier, metric="nonexistent").artifacts == []
+    capsys.readouterr()
+    assert main(["runs", "metrics", identifier, "--step", "evaluate", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == api.run_metrics(
+        identifier,
+        step="evaluate",
+    ).model_dump(mode="json")
+    with pytest.raises(api.MlefError, match="max_bytes"):
+        api.run_metrics(identifier, max_bytes=1)
+    with pytest.raises(api.MlefError, match="Unknown pipeline step"):
+        api.run_metrics(identifier, step="missing")
+    path = attempt_directory(directory, "evaluate") / "outputs/metrics/metrics.json"
+    path.write_text("{}")
+    with pytest.raises(api.MlefError, match="bytes or inventory changed"):
+        api.run_metrics(identifier)
+
+
 @pytest.mark.parametrize("imperative", [False, True])
 def test_captured_scripts_ignore_live_edits_and_run_once(
     project: Path, tmp_path: Path, imperative: bool
