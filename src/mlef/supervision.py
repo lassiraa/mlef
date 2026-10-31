@@ -12,6 +12,7 @@ from pathlib import Path
 
 from pydantic import Field
 
+from .annotations import RunLabels
 from .events import Delivery
 from .evidence import Diagnostic, Result
 from .limits import Limits
@@ -41,6 +42,7 @@ class Request(Contract):
     cache_from: str | None = None
     force: list[str] = Field(default_factory=list)
     source_snapshot: str | None = None
+    labels: RunLabels | None = None
 
 
 def identity(root: Path, identifier: str, token: str) -> Runtime:
@@ -294,6 +296,7 @@ def main() -> None:
             resume=request.resume,
             cache_from=request.cache_from,
             force=request.force,
+            labels=request.labels,
             _source_snapshot=Path(request.source_snapshot)
             if request.source_snapshot is not None
             else None,

@@ -18,6 +18,7 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field, JsonValue, TypeAdapter
 
+from .annotations import RunLabels
 from .collection import output_destination
 from .environment import (
     UV_IMAGE,
@@ -269,6 +270,7 @@ def run(
     _identifier: str | None = None,
     _token: str | None = None,
     _source_snapshot: Path | None = None,
+    labels: RunLabels | None = None,
 ) -> int:
     from .supervision import Request, identity, supervise
 
@@ -329,6 +331,7 @@ def run(
                 cache_from=cache_from,
                 force=force,
                 source_snapshot=str(_source_snapshot) if _source_snapshot is not None else None,
+                labels=labels,
             )
         )
     if not (root / ".mlef" / "runs").is_dir():
@@ -413,6 +416,17 @@ def run(
                 save(run_dir / "run.json", metadata)
 
             try:
+                if labels is not None:
+                    from .annotations import update as annotate_run
+
+                    annotate_run(
+                        root,
+                        run_id,
+                        name=labels.name,
+                        experiment=labels.experiment,
+                        tags=labels.tags,
+                        note=labels.note,
+                    )
                 stage("source_capture")
                 snapshot = None
                 if _source_snapshot is not None:

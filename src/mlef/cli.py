@@ -9,6 +9,7 @@ from typing import NoReturn
 from typing_extensions import override
 
 from . import __version__
+from .annotations import RunLabels
 from .comparison import compare
 from .evidence import read_result
 from .pipeline import validate
@@ -23,6 +24,16 @@ from .tabular_diagnostics import diagnose, read_profile
 def init(root: Path, *, scaffold: bool = True) -> None:
     initialize(root, scaffold=scaffold)
     print(f"Initialized mlef storage: {root / '.mlef'}")
+
+
+def _tags(values: list[str]) -> dict[str, str]:
+    result = {}
+    for value in values:
+        key, separator, text = value.partition("=")
+        if not separator or not key or key in result:
+            raise ValueError("Tags require distinct KEY=VALUE arguments.")
+        result[key] = text
+    return result
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,6 +61,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = Parser(prog="mlef", description="Run Python experiments in Docker.")
     parser.add_argument("--version", action="version", version=f"mlef {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
+    experiments = commands.add_parser("experiments", help="Organize runs into named groups.")
+    experiment_commands = experiments.add_subparsers(dest="experiments_command", required=True)
+    experiment_create = experiment_commands.add_parser("create")
+    experiment_create.add_argument("name")
+    experiment_create.add_argument("--description")
+    experiment_create.add_argument("--json", action="store_true")
+    experiment_list = experiment_commands.add_parser("list")
+    experiment_list.add_argument("--json", action="store_true")
+    experiment_show = experiment_commands.add_parser("show")
+    experiment_show.add_argument("name")
+    experiment_show.add_argument("--limit", type=int, default=50)
+    experiment_show.add_argument("--offset", type=int, default=0)
+    experiment_show.add_argument("--include-archived", action="store_true")
+    experiment_show.add_argument("--json", action="store_true")
     evaluation = commands.add_parser("evaluate", help="Evaluate exact model versions sequentially.")
     evaluation.add_argument("definition", type=Path)
     evaluation.add_argument("--model", action="append", required=True)
@@ -115,6 +140,27 @@ def main(argv: list[str] | None = None) -> int:
     history_list.add_argument("--limit", type=int, default=50)
     history_list.add_argument("--offset", type=int, default=0)
     history_list.add_argument("--json", action="store_true")
+    history_list.add_argument("--experiment")
+    history_list.add_argument("--name")
+    history_list.add_argument("--tag", action="append", default=[])
+    history_list.add_argument("--include-archived", action="store_true")
+    annotations = history_commands.add_parser("annotations")
+    annotations.add_argument("run_id")
+    annotations.add_argument("--json", action="store_true")
+    annotate = history_commands.add_parser("annotate")
+    annotate.add_argument("run_id")
+    for name in ["name", "note", "experiment"]:
+        field = annotate.add_mutually_exclusive_group()
+        field.add_argument(f"--{name}")
+        field.add_argument(f"--clear-{name}", action="store_true")
+    annotate.add_argument("--tag", action="append", default=[])
+    annotate.add_argument("--remove-tag", action="append", default=[])
+    archive = annotate.add_mutually_exclusive_group()
+    archive.add_argument(
+        "--archive", dest="archived", action="store_const", const=True, default=None
+    )
+    archive.add_argument("--unarchive", dest="archived", action="store_const", const=False)
+    annotate.add_argument("--json", action="store_true")
     metric_query = history_commands.add_parser("metrics")
     metric_query.add_argument("run_id")
     metric_query.add_argument("--step")
@@ -166,6 +212,10 @@ def main(argv: list[str] | None = None) -> int:
     execute.add_argument("--include", action="append", default=[], type=Path, metavar="PATH")
     execute.add_argument("--output", action="append", default=[], type=Path, metavar="DIRECTORY")
     execute.add_argument("--experiment", type=Path, metavar="JSON_FILE")
+    execute.add_argument("--experiment-name")
+    execute.add_argument("--name")
+    execute.add_argument("--tag", action="append", default=[])
+    execute.add_argument("--note")
     execute.add_argument("--reuse-from", metavar="RUN_ID")
     execute.add_argument("--from-step", metavar="STEP")
     execute.add_argument("--resume", action="store_true")
@@ -201,10 +251,29 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Only mlef run accepts script arguments after --.")
     try:
         root = project_root()
-        if args.command in {"runs", "models", "evaluate", "evaluations"}:
+        if args.command in {"runs", "models", "evaluate", "evaluations", "experiments"}:
             from . import api
 
             try:
+                if args.command == "experiments":
+                    if args.experiments_command == "create":
+                        group = api.create_experiment(
+                            args.name, root=root, description=args.description
+                        )
+                        print(group.model_dump_json(indent=None if args.json else 2))
+                    elif args.experiments_command == "list":
+                        groups = api.list_experiments(root=root)
+                        print(groups.model_dump_json(indent=None if args.json else 2))
+                    else:
+                        details = api.experiment_details(
+                            args.name,
+                            root=root,
+                            limit=args.limit,
+                            offset=args.offset,
+                            include_archived=args.include_archived,
+                        )
+                        print(details.model_dump_json(indent=None if args.json else 2))
+                    return 0
                 if args.command == "evaluate":
                     from .limits import memory_bytes
 
@@ -297,13 +366,35 @@ def main(argv: list[str] | None = None) -> int:
                         version = api.model_version(args.selector, root=root)
                         print(version.model_dump_json(indent=None if args.json else 2))
                     return 0
-                if args.runs_command == "list":
+                if args.runs_command == "annotations":
+                    labels = api.run_annotations(args.run_id, root=root)
+                    print(labels.model_dump_json(indent=None if args.json else 2))
+                elif args.runs_command == "annotate":
+                    labels = api.annotate_run(
+                        args.run_id,
+                        root=root,
+                        name=args.name,
+                        experiment=args.experiment,
+                        note=args.note,
+                        tags=_tags(args.tag),
+                        remove_tags=args.remove_tag,
+                        archived=args.archived,
+                        clear_name=args.clear_name,
+                        clear_note=args.clear_note,
+                        clear_experiment=args.clear_experiment,
+                    )
+                    print(labels.model_dump_json(indent=None if args.json else 2))
+                elif args.runs_command == "list":
                     result = api.run_history(
                         root=root,
                         state=args.state,
                         since=args.since,
                         limit=args.limit,
                         offset=args.offset,
+                        experiment=args.experiment,
+                        name=args.name,
+                        tags=_tags(args.tag),
+                        include_archived=args.include_archived,
                     )
                     if args.json:
                         print(result.model_dump_json())
@@ -311,9 +402,11 @@ def main(argv: list[str] | None = None) -> int:
                         for diagnostic in result.diagnostics:
                             print(f"mlef: {diagnostic}", file=sys.stderr)
                         for record in result.runs:
+                            labels = result.annotations[record.id]
                             print(
                                 f"{record.id}  {record.state}  "
-                                f"{record.created_at}  {record.command}"
+                                f"{record.created_at}  {labels.name or '-'}  "
+                                f"experiment={labels.experiment or '-'}  {record.command}"
                             )
                         print(
                             f"{len(result.runs)} of {result.total} runs; "
@@ -508,6 +601,21 @@ def main(argv: list[str] | None = None) -> int:
             else:
                 print(retrieve(root, args.run_id, args.artifact, args.output))
             return 0
+        labels = (
+            RunLabels(
+                name=args.name,
+                experiment=args.experiment_name,
+                tags=_tags(args.tag),
+                note=args.note,
+            )
+            if (
+                args.name is not None
+                or args.experiment_name is not None
+                or args.note is not None
+                or args.tag
+            )
+            else None
+        )
         if (
             args.max_log_bytes is not None
             or args.max_runner_log_bytes is not None
@@ -520,6 +628,7 @@ def main(argv: list[str] | None = None) -> int:
             or args.resume
             or args.cache_from is not None
             or args.force
+            or labels is not None
         ):
             return run(
                 root,
@@ -539,6 +648,7 @@ def main(argv: list[str] | None = None) -> int:
                 resume=args.resume,
                 cache_from=args.cache_from,
                 force=args.force,
+                labels=labels,
             )
         if args.experiment is not None:
             return run(

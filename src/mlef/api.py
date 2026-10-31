@@ -8,9 +8,11 @@ from pathlib import Path
 from typing import Literal, ParamSpec, TypeVar
 from uuid import uuid4
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
+from . import annotations as organization
 from . import comparison, models, recovery, storage
+from .annotations import ExperimentGroup, ExperimentListing, RunAnnotations, RunLabels
 from .environment import file_hash
 from .evaluation_comparison import EvaluationComparison
 from .evaluations import EvaluationBatch, EvaluationListing
@@ -38,28 +40,37 @@ __all__ = [
     "EvaluationBatch",
     "EvaluationComparison",
     "EvaluationListing",
+    "ExperimentDetails",
+    "ExperimentGroup",
+    "ExperimentListing",
     "LogEvent",
     "MlefError",
     "ModelListing",
     "ModelVersion",
+    "RunAnnotations",
     "RunHistory",
     "RunListing",
     "RunMetrics",
     "RunOptions",
     "RunStatus",
+    "annotate_run",
     "artifacts",
     "compare",
     "compare_evaluations",
     "compare_tabular",
+    "create_experiment",
     "evaluate",
     "evaluation_batch",
     "evaluation_leaderboard",
+    "experiment_details",
+    "experiment_group",
     "export_tabular_artifacts",
     "fetch_run",
     "get",
     "get_model",
     "init",
     "list_evaluations",
+    "list_experiments",
     "list_models",
     "list_runs",
     "model_version",
@@ -68,6 +79,7 @@ __all__ = [
     "recover",
     "register_model",
     "run",
+    "run_annotations",
     "run_history",
     "run_metrics",
     "status",
@@ -118,10 +130,100 @@ class RunListing(Contract):
     diagnostics: list[str]
 
 
-class RunHistory(RunListing):
+class RunHistoryV1(RunListing):
+    model_config = ConfigDict(title="RunHistory")
     schema_version: Literal[1] = 1
     total: int
     next_offset: int | None
+
+
+class RunHistory(RunListing):
+    schema_version: Literal[2] = 2
+    total: int
+    next_offset: int | None
+    annotations: dict[str, RunAnnotations]
+
+
+class ExperimentDetails(Contract):
+    schema_version: Literal[1] = 1
+    group: ExperimentGroup
+    history: RunHistory
+
+
+@_translated
+def experiment_details(
+    name: str,
+    *,
+    limit: int = 50,
+    offset: int = 0,
+    include_archived: bool = False,
+    root: Path | str | None = None,
+) -> ExperimentDetails:
+    resolved = project_root(root)
+    return ExperimentDetails(
+        group=organization.group(resolved, name),
+        history=run_history(
+            root=resolved,
+            experiment=name,
+            limit=limit,
+            offset=offset,
+            include_archived=include_archived,
+        ),
+    )
+
+
+@_translated
+def run_annotations(identifier: str, *, root: Path | str | None = None) -> RunAnnotations:
+    resolved = project_root(root)
+    storage.inspect(resolved, identifier)
+    return organization.read(resolved, identifier)
+
+
+@_translated
+def annotate_run(
+    identifier: str,
+    *,
+    name: str | None = None,
+    experiment: str | None = None,
+    note: str | None = None,
+    tags: dict[str, str] | None = None,
+    remove_tags: list[str] | None = None,
+    archived: bool | None = None,
+    clear_name: bool = False,
+    clear_note: bool = False,
+    clear_experiment: bool = False,
+    root: Path | str | None = None,
+) -> RunAnnotations:
+    return organization.update(
+        project_root(root),
+        identifier,
+        name=name,
+        experiment=experiment,
+        note=note,
+        tags=tags,
+        remove_tags=remove_tags,
+        archived=archived,
+        clear_name=clear_name,
+        clear_note=clear_note,
+        clear_experiment=clear_experiment,
+    )
+
+
+@_translated
+def create_experiment(
+    name: str, *, description: str | None = None, root: Path | str | None = None
+) -> ExperimentGroup:
+    return organization.create_group(project_root(root), name, description)
+
+
+@_translated
+def list_experiments(*, root: Path | str | None = None) -> ExperimentListing:
+    return organization.groups(project_root(root))
+
+
+@_translated
+def experiment_group(name: str, *, root: Path | str | None = None) -> ExperimentGroup:
+    return organization.group(project_root(root), name)
 
 
 @_translated
@@ -256,6 +358,10 @@ def run_history(
     since: str | None = None,
     limit: int = 50,
     offset: int = 0,
+    experiment: str | None = None,
+    name: str | None = None,
+    tags: dict[str, str] | None = None,
+    include_archived: bool = False,
     root: Path | str | None = None,
 ) -> RunHistory:
     """Read newest-first history; offsets apply after filtering saved records."""
@@ -268,19 +374,38 @@ def run_history(
     threshold = datetime.fromisoformat(since) if since is not None else None
     if threshold is not None and threshold.utcoffset() is None:
         raise ValueError("since must include a timezone offset.")
-    records, diagnostics = storage.list_runs(project_root(root))
-    selected = [
-        record
-        for record in records
-        if (state is None or record.state == state)
-        and (threshold is None or datetime.fromisoformat(record.created_at) >= threshold)
-    ]
+    RunLabels(name=name, experiment=experiment, tags=tags if tags is not None else {})
+    resolved = project_root(root)
+    group_id = organization.group(resolved, experiment).id if experiment is not None else None
+    records, diagnostics = storage.list_runs(resolved)
+    selected = []
+    annotations = {}
+    for record in records:
+        if (state is not None and record.state != state) or (
+            threshold is not None and datetime.fromisoformat(record.created_at) < threshold
+        ):
+            continue
+        try:
+            labels = organization.read(resolved, record.id)
+        except storage.QueryError as error:
+            diagnostics.append(f"{record.id}: {error}")
+            continue
+        if (
+            (labels.archived and not include_archived)
+            or (group_id is not None and labels.experiment_id != group_id)
+            or (name is not None and labels.name != name)
+            or any(labels.tags.get(key) != value for key, value in (tags or {}).items())
+        ):
+            continue
+        selected.append(record)
+        annotations[record.id] = labels
     end = offset + limit
     return RunHistory(
         runs=selected[offset:end],
         diagnostics=diagnostics,
         total=len(selected),
         next_offset=end if end < len(selected) else None,
+        annotations={record.id: annotations[record.id] for record in selected[offset:end]},
     )
 
 
@@ -456,6 +581,10 @@ def run(
     resume: bool = False,
     cache_from: str | None = None,
     force: list[str] | None = None,
+    name: str | None = None,
+    experiment_name: str | None = None,
+    tags: dict[str, str] | None = None,
+    note: str | None = None,
 ) -> RunStatus:
     resolved = project_root(root)
     options = options if options is not None else RunOptions()
@@ -482,6 +611,11 @@ def run(
         resume=resume,
         cache_from=cache_from,
         force=force or [],
+        labels=RunLabels(
+            name=name, experiment=experiment_name, tags=tags if tags is not None else {}, note=note
+        )
+        if any(value is not None for value in [name, experiment_name, tags, note])
+        else None,
     )
     result = supervise(request, delivery)
     if result == 2:

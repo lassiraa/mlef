@@ -59,8 +59,10 @@ def test_real_frozen_multi_model_evaluation(
 
 def test_real_cross_run_evaluation_without_training(project: Path) -> None:
     setup(project)
-    trained = api.run()
+    trained = api.run(name="training", experiment_name="cross-run", tags={"family": "constant"})
     assert trained.state == "succeeded"
+    assert api.run_annotations(trained.id).name == "training"
+    assert api.run_history(experiment="cross-run").runs[0].id == trained.id
     directory = project / ".mlef/runs" / trained.id / "artifacts/pipeline"
     lines = ["schema_version = 2", "[[steps]]", 'name = "evaluate"', 'script = "steps/evaluate.py"']
     for binding, producer, output in [
