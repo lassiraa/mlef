@@ -58,6 +58,13 @@ These declarations do not prove row uniqueness, split disjointness or prediction
 coverage: those checks require reading payloads. Model metadata records framework
 and serialization; loading models is outside these contracts.
 
+Optional dataset-byte and sorted-row-ID SHA256 identities and bounded profiles
+extend dataset metadata. Profiles carry rows examined, method and at most 20
+column missing/distinct counts; sampled summaries require a seed and sampled-row
+identity. These extensions are omitted from content identity when absent, so
+historical dataset producer hashes remain valid. See :doc:`tabular` for an
+offline exporter that verifies actual rows, split payloads and prediction links.
+
 The type inventory covers files, directories, tables, datasets, splits,
 predictions, models, checkpoints, metrics, parameters, schemas, arrays,
 embeddings, indexes, plots, reports, text, images, audio, video, annotations,
@@ -115,6 +122,11 @@ Matching names does not establish comparability. Consumers must check definition
 versions, units, parameters, aggregation and evaluation references. Curves have no
 implicit scalar ranking. External storage for large metric arrays and streaming
 serializers remain follow-up work.
+
+``Metrics.semantic_differences(other)`` checks declared scope, names, common
+scoring semantics and labelled axes without ranking measured values. It does
+not establish dataset/split compatibility or execution success; the tabular
+comparator separately validates those prerequisites.
 
 Schemas
 -------

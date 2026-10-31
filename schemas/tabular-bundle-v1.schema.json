@@ -1,0 +1,69 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "An exact producer reference, never a mutable latest alias or storage URI.",
+      "properties": {
+        "output": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Output",
+          "type": "string"
+        },
+        "run_id": {
+          "title": "Run Id",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "step": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "run_id",
+        "step",
+        "output",
+        "sha256"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifacts": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "title": "Artifacts",
+      "type": "object"
+    },
+    "evaluation_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Evaluation Sha256",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_run": {
+      "title": "Source Run",
+      "type": "string"
+    }
+  },
+  "required": [
+    "source_run",
+    "evaluation_sha256",
+    "artifacts"
+  ],
+  "title": "TabularBundle",
+  "type": "object"
+}

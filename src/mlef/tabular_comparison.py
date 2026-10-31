@@ -6,9 +6,17 @@ from typing import Literal
 
 from pydantic import Field
 
+from .metrics import Metrics, Scalar
 from .records import Contract, read_json
 from .storage import QueryError, artifact_path, inspect
-from .tabular_runtime import Evaluation, Prediction, digest, measure, parse_evaluation
+from .tabular_runtime import (
+    Evaluation,
+    Prediction,
+    digest,
+    measure,
+    metric_evidence,
+    parse_evaluation,
+)
 
 MAX_EVIDENCE_BYTES = 32 * 1024 * 1024
 
@@ -48,9 +56,40 @@ class TabularComparison(Contract):
 
 def load_evaluation(root: Path, identifier: str) -> tuple[Evaluation, list[Prediction]]:
     inspect(root, identifier)
+    return read_evaluation(
+        artifact_path(root, identifier, "evaluation.json"),
+        artifact_path(root, identifier, "predictions.csv"),
+    )
+
+
+def evaluation_metrics(result: Evaluation) -> Metrics:
+    if not result.complete or len(result.folds) != len(result.protocol.splits):
+        raise ValueError("Structured metrics require a complete evaluation.")
+    metrics = Metrics.model_validate(
+        result.metric_evidence
+        if result.metric_evidence is not None
+        else metric_evidence(result.protocol, result.folds)
+    )
+    name = result.protocol.metric + "_mean"
+    scalar = metrics.values.get(name)
+    expected = sum(fold.score or 0 for fold in result.folds) / len(result.folds)
+    if (
+        set(metrics.values) != {name}
+        or not isinstance(scalar, Scalar)
+        or abs(scalar.value - expected) > 1e-10
+        or scalar.direction != result.protocol.direction
+        or scalar.sample_count != sum(fold.score_count for fold in result.folds)
+        or any(
+            ref is not None
+            for ref in (metrics.model, metrics.dataset, metrics.split, metrics.predictions)
+        )
+    ):
+        raise ValueError("Structured metric evidence disagrees with fold results.")
+    return metrics
+
+
+def read_evaluation(path: Path, predictions: Path) -> tuple[Evaluation, list[Prediction]]:
     try:
-        path = artifact_path(root, identifier, "evaluation.json")
-        predictions = artifact_path(root, identifier, "predictions.csv")
         if any(
             not item.is_file() or item.stat().st_size > MAX_EVIDENCE_BYTES
             for item in [path, predictions]
@@ -132,6 +171,10 @@ def load_evaluation(root: Path, identifier: str) -> tuple[Evaluation, list[Predi
                 )
                 if fold.score is None or abs(recomputed - fold.score) > 1e-10:
                     raise ValueError("Reported score differs from saved predictions.")
+        if result.metric_evidence is not None:
+            if not result.complete:
+                raise ValueError("Incomplete evaluations cannot publish aggregate metrics.")
+            evaluation_metrics(result)
         return result, rows
     except QueryError:
         raise
@@ -173,6 +216,15 @@ def compare_tabular(
     ):
         result.reasons.append("Both runs and every required fold must succeed.")
         return result
+    if (first.metric_evidence is None) != (second.metric_evidence is None):
+        result.reasons.append("Structured scoring semantics are missing from one historical run.")
+        return result
+    if first.metric_evidence is not None and second.metric_evidence is not None:
+        differences = evaluation_metrics(first).semantic_differences(evaluation_metrics(second))
+        if differences:
+            result.compatibility = "incompatible"
+            result.reasons.extend(differences)
+            return result
     labels = {(row.fold, row.row_id): row.truth for row in left_predictions}
     if labels != {(row.fold, row.row_id): row.truth for row in right_predictions}:
         result.compatibility = "incompatible"

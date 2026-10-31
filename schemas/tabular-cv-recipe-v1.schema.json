@@ -1,0 +1,95 @@
+{
+  "$defs": {
+    "Fit": {
+      "additionalProperties": false,
+      "properties": {
+        "best_iteration": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Best Iteration"
+        },
+        "train": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Train",
+          "type": "array"
+        },
+        "validation": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Validation",
+          "type": "array"
+        }
+      },
+      "required": [
+        "train"
+      ],
+      "title": "Fit",
+      "type": "object"
+    },
+    "JsonValue": {}
+  },
+  "additionalProperties": false,
+  "properties": {
+    "evaluation_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Evaluation Sha256",
+      "type": "string"
+    },
+    "fits": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/Fit"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Fits",
+      "type": "object"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "$ref": "#/$defs/JsonValue"
+      },
+      "title": "Parameters",
+      "type": "object"
+    },
+    "protocol_id": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Protocol Id",
+      "type": "string"
+    },
+    "role": {
+      "const": "cross_validation_recipe",
+      "default": "cross_validation_recipe",
+      "title": "Role",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "protocol_id",
+    "evaluation_sha256",
+    "parameters",
+    "fits"
+  ],
+  "title": "CvRecipe",
+  "type": "object"
+}

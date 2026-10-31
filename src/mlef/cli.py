@@ -61,6 +61,11 @@ def main(argv: list[str] | None = None) -> int:
         "tabular", help="Inspect actual saved tabular evaluation evidence."
     )
     tabular_commands = tabular.add_subparsers(dest="tabular_command", required=True)
+    tabular_export = tabular_commands.add_parser("export")
+    tabular_export.add_argument("run_id")
+    tabular_export.add_argument("--data", type=Path, required=True)
+    tabular_export.add_argument("--output", type=Path, required=True)
+    tabular_export.add_argument("--profile", action="store_true")
     tabular_compare = tabular_commands.add_parser("compare")
     tabular_compare.add_argument("baseline")
     tabular_compare.add_argument("candidate")
@@ -123,6 +128,14 @@ def main(argv: list[str] | None = None) -> int:
                     print(f"{item.status}: {item.step or 'pipeline'}: {item.message}")
             return {"verified": 0, "invalid": 1, "deferred": 3}[report.status]
         if args.command == "tabular":
+            if args.tabular_command == "export":
+                from .tabular_artifacts import export_artifacts
+
+                bundle = export_artifacts(
+                    root, args.run_id, root / args.data, root / args.output, profile=args.profile
+                )
+                print(bundle.model_dump_json())
+                return 0
             if args.tabular_command == "profile":
                 profile = read_profile(root, args.run_id)
                 print(

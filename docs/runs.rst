@@ -27,6 +27,7 @@ for argument help.
     mlef recover RUN --json
     mlef tabular compare BASELINE CANDIDATE --limit 20 --json
     mlef tabular profile RUN --json
+    mlef tabular export RUN --data public.csv --output .mlef/shared/RUN --profile
     mlef tabular diagnose BASELINE CANDIDATE --minimum-count 20 --limit 20 --json
 
 ``init`` also creates a :doc:`four-step example <pipelines>` when neither

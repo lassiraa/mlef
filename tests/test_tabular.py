@@ -5,7 +5,7 @@ import os
 import subprocess
 from collections.abc import Callable
 from pathlib import Path
-from typing import Self
+from typing import Literal, Self
 from uuid import uuid4
 
 import pytest
@@ -272,6 +272,32 @@ def test_tabular_comparison_matches_cli_and_api(
     assert result.model_dump(mode="json") == json.loads(
         cli("tabular", "compare", first, second, "--limit", "1", "--json").stdout
     )
+
+
+@pytest.mark.parametrize("task", ["binary", "regression"])
+def test_shared_artifact_exports_from_classification_and_regression_examples(
+    project: Path, tmp_path: Path, task: Literal["binary", "regression"]
+) -> None:
+    data = EXAMPLE / ("regression.csv" if task == "regression" else "data.csv")
+    protocol = prepare(
+        data,
+        identifier="id",
+        target="target",
+        task=task,
+        numeric=["amount", "age", "tenure"]
+        if task == "regression"
+        else ["radius", "texture", "smoothness"],
+        categorical=["region"] if task == "regression" else ["radius_band"],
+    )
+    identifier = stored(
+        project,
+        data,
+        protocol=protocol,
+        factory=example_factory("make_regressor" if task == "regression" else "make_estimator"),
+    )
+    destination = tmp_path / "typed"
+    bundle = api.export_tabular_artifacts(identifier, data, destination, root=project, profile=True)
+    assert tabular.read_artifacts(destination) == bundle
 
 
 @pytest.mark.parametrize("damage", ["protocol", "prediction", "score", "failed_run", "missing"])

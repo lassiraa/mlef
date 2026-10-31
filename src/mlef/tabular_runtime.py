@@ -245,6 +245,33 @@ class Evaluation(Contract):
     predictions_sha256: str = Field(pattern="^[a-f0-9]{64}$")
     parameters: dict[str, JsonValue] = Field(default_factory=dict)
     model_artifact: str | None = None
+    metric_evidence: dict[str, JsonValue] | None = None
+
+
+def metric_evidence(protocol: Protocol, folds: list[Fold]) -> dict[str, JsonValue]:
+    if len(folds) != len(protocol.splits) or any(
+        fold.score is None or fold.state != "succeeded" for fold in folds
+    ):
+        raise ValueError("Structured metrics require every scoring fold.")
+    return {
+        "schema_version": 1,
+        "scope": "out_of_fold",
+        "values": {
+            protocol.metric + "_mean": {
+                "kind": "scalar",
+                "definition": "Area under the receiver operating characteristic curve."
+                if protocol.task == "binary"
+                else "Root mean squared prediction error.",
+                "version": "1",
+                "unit": "dimensionless" if protocol.task == "binary" else "target",
+                "direction": protocol.direction,
+                "aggregation": "unweighted_mean_over_folds",
+                "sample_count": sum(fold.score_count for fold in folds),
+                "dimensions": {"task": protocol.task},
+                "value": sum(fold.score or 0 for fold in folds) / len(folds),
+            }
+        },
+    }
 
 
 def parse_evaluation(values: JsonValue) -> Evaluation:
@@ -635,6 +662,8 @@ def evaluate(
         save(output / "evaluation.json", evaluation)
     assert evaluation is not None
     if evaluation.complete:
+        evaluation.metric_evidence = metric_evidence(protocol, results)
+        save(output / "evaluation.json", evaluation)
         save(
             output / "metrics.json",
             {protocol.metric + "_mean": sum(f.score or 0 for f in results) / len(results)},

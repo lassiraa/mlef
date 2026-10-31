@@ -21,6 +21,7 @@ from .project import initialize, project_root
 from .records import Contract, RunRecord
 from .sdk import _checked
 from .supervision import Request, supervise
+from .tabular_artifacts import TabularBundle, export_artifacts
 from .tabular_comparison import TabularComparison
 from .tabular_comparison import compare_tabular as _compare_tabular
 from .tabular_diagnostics import Diagnostics, diagnose, read_profile
@@ -35,6 +36,7 @@ __all__ = [
     "artifacts",
     "compare",
     "compare_tabular",
+    "export_tabular_artifacts",
     "get",
     "init",
     "list_runs",
@@ -87,6 +89,21 @@ class RunStatus(RunRecord):
 class RunListing(Contract):
     runs: list[RunRecord]
     diagnostics: list[str]
+
+
+@_translated
+def export_tabular_artifacts(
+    identifier: str,
+    data: Path | str,
+    destination: Path | str,
+    *,
+    root: Path | str | None = None,
+    profile: bool = False,
+) -> TabularBundle:
+    resolved = project_root(root)
+    return export_artifacts(
+        resolved, identifier, resolved / data, resolved / destination, profile=profile
+    )
 
 
 @_translated

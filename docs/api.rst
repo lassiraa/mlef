@@ -145,3 +145,9 @@ intent. Public JSON contracts live in `schemas <https://github.com/lassiraa/mlef
 tabular contracts requires no ML dependencies.
 
 For host installation and running copied demos, see :doc:`setup <setup>`.
+
+``api.export_tabular_artifacts(identifier, data, destination, *, root=None,
+profile=False)`` returns a ``TabularBundle`` after exporting verified public
+evaluation evidence to a fresh destination. ``mlef.tabular.read_artifacts(Path)``
+verifies a moved or standalone bundle without the original run or ML dependencies.
+See :doc:`tabular` for payload formats, CV recipe limitations and privacy boundaries.

@@ -127,6 +127,40 @@
       "title": "Column",
       "type": "object"
     },
+    "ColumnStatistics": {
+      "additionalProperties": false,
+      "properties": {
+        "distinct": {
+          "minimum": 0,
+          "title": "Distinct",
+          "type": "integer"
+        },
+        "missing": {
+          "minimum": 0,
+          "title": "Missing",
+          "type": "integer"
+        },
+        "name": {
+          "maxLength": 200,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        },
+        "name_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Name Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "name_sha256",
+        "missing",
+        "distinct"
+      ],
+      "title": "ColumnStatistics",
+      "type": "object"
+    },
     "DatasetMetadata": {
       "additionalProperties": false,
       "properties": {
@@ -138,11 +172,35 @@
           "title": "Columns",
           "type": "array"
         },
+        "dataset_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Dataset Sha256"
+        },
         "kind": {
           "const": "dataset",
           "default": "dataset",
           "title": "Kind",
           "type": "string"
+        },
+        "profile": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DatasetProfile"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
         },
         "row_id": {
           "items": {
@@ -151,6 +209,19 @@
           "minItems": 1,
           "title": "Row Id",
           "type": "array"
+        },
+        "row_ids_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Row Ids Sha256"
         },
         "rows": {
           "minimum": 0,
@@ -175,6 +246,70 @@
         "row_id"
       ],
       "title": "DatasetMetadata",
+      "type": "object"
+    },
+    "DatasetProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "columns": {
+          "items": {
+            "$ref": "#/$defs/ColumnStatistics"
+          },
+          "maxItems": 20,
+          "title": "Columns",
+          "type": "array"
+        },
+        "method": {
+          "enum": [
+            "exact",
+            "sampled"
+          ],
+          "title": "Method",
+          "type": "string"
+        },
+        "omitted_columns": {
+          "minimum": 0,
+          "title": "Omitted Columns",
+          "type": "integer"
+        },
+        "rows_examined": {
+          "minimum": 0,
+          "title": "Rows Examined",
+          "type": "integer"
+        },
+        "sample_seed": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Seed"
+        },
+        "sample_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sample Sha256"
+        }
+      },
+      "required": [
+        "method",
+        "rows_examined",
+        "columns",
+        "omitted_columns"
+      ],
+      "title": "DatasetProfile",
       "type": "object"
     },
     "GenericMetadata": {
