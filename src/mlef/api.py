@@ -2,9 +2,10 @@
 
 import subprocess
 from collections.abc import Callable
+from datetime import datetime
 from functools import wraps
 from pathlib import Path
-from typing import ParamSpec, TypeVar
+from typing import Literal, ParamSpec, TypeVar
 from uuid import uuid4
 
 from pydantic import Field
@@ -31,6 +32,7 @@ from .transfers import RunTransfer, backend, fetch, publish
 __all__ = [
     "LogEvent",
     "MlefError",
+    "RunHistory",
     "RunListing",
     "RunOptions",
     "RunStatus",
@@ -46,6 +48,7 @@ __all__ = [
     "publish_run",
     "recover",
     "run",
+    "run_history",
     "status",
     "tabular_diagnostics",
     "tabular_profile",
@@ -92,6 +95,47 @@ class RunStatus(RunRecord):
 class RunListing(Contract):
     runs: list[RunRecord]
     diagnostics: list[str]
+
+
+class RunHistory(RunListing):
+    schema_version: Literal[1] = 1
+    total: int
+    next_offset: int | None
+
+
+@_translated
+def run_history(
+    *,
+    state: Literal["preparing", "running", "succeeded", "failed", "cancelled"] | None = None,
+    since: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+    root: Path | str | None = None,
+) -> RunHistory:
+    """Read newest-first history; offsets apply after filtering saved records."""
+    if type(limit) is not int or not 1 <= limit <= 1000:
+        raise ValueError("limit must be an integer between 1 and 1000.")
+    if type(offset) is not int or offset < 0:
+        raise ValueError("offset must be a nonnegative integer.")
+    if state not in {None, "preparing", "running", "succeeded", "failed", "cancelled"}:
+        raise ValueError("Unknown run state.")
+    threshold = datetime.fromisoformat(since) if since is not None else None
+    if threshold is not None and threshold.utcoffset() is None:
+        raise ValueError("since must include a timezone offset.")
+    records, diagnostics = storage.list_runs(project_root(root))
+    selected = [
+        record
+        for record in records
+        if (state is None or record.state == state)
+        and (threshold is None or datetime.fromisoformat(record.created_at) >= threshold)
+    ]
+    end = offset + limit
+    return RunHistory(
+        runs=selected[offset:end],
+        diagnostics=diagnostics,
+        total=len(selected),
+        next_offset=end if end < len(selected) else None,
+    )
 
 
 @_translated

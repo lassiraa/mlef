@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from mlef.api import RunHistory
 from mlef.artifacts import ArtifactManifest, CustomType
 from mlef.benchmark import HoldoutScore, TabularTrial
 from mlef.comparison import Comparison
@@ -29,6 +30,7 @@ def main() -> None:
     root = Path(__file__).resolve().parents[1] / "schemas"
     root.mkdir(exist_ok=True)
     schemas = [
+        ("run-history-v1", RunHistory),
         ("artifact-v1", ArtifactManifest),
         ("custom-type-v1", CustomType),
         ("tabular-bundle-v1", TabularBundle),

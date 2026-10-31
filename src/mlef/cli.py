@@ -50,6 +50,20 @@ def main(argv: list[str] | None = None) -> int:
     parser = Parser(prog="mlef", description="Run Python experiments in Docker.")
     parser.add_argument("--version", action="version", version=f"mlef {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
+    history = commands.add_parser("runs", help="Inspect saved run history offline.")
+    history_commands = history.add_subparsers(dest="runs_command", required=True)
+    history_list = history_commands.add_parser("list")
+    history_list.add_argument(
+        "--state", choices=["preparing", "running", "succeeded", "failed", "cancelled"]
+    )
+    history_list.add_argument("--since", help="Inclusive ISO timestamp with timezone offset.")
+    history_list.add_argument("--limit", type=int, default=50)
+    history_list.add_argument("--offset", type=int, default=0)
+    history_list.add_argument("--json", action="store_true")
+    for name in ["show", "steps"]:
+        detail = history_commands.add_parser(name)
+        detail.add_argument("run_id")
+        detail.add_argument("--json", action="store_true")
     initialization = commands.add_parser("init", help="Initialize storage and a script pipeline.")
     initialization.add_argument(
         "--storage-only", action="store_true", help="Do not create the example pipeline."
@@ -125,6 +139,47 @@ def main(argv: list[str] | None = None) -> int:
         parser.error("Only mlef run accepts script arguments after --.")
     try:
         root = project_root()
+        if args.command == "runs":
+            from . import api
+
+            try:
+                if args.runs_command == "list":
+                    result = api.run_history(
+                        root=root,
+                        state=args.state,
+                        since=args.since,
+                        limit=args.limit,
+                        offset=args.offset,
+                    )
+                    if args.json:
+                        print(result.model_dump_json())
+                    else:
+                        for diagnostic in result.diagnostics:
+                            print(f"mlef: {diagnostic}", file=sys.stderr)
+                        for record in result.runs:
+                            print(
+                                f"{record.id}  {record.state}  "
+                                f"{record.created_at}  {record.command}"
+                            )
+                        print(
+                            f"{len(result.runs)} of {result.total} runs; "
+                            f"next offset: {result.next_offset}"
+                        )
+                elif args.runs_command == "steps":
+                    pipeline = api.pipeline_status(args.run_id, root=root)
+                    if args.json:
+                        print(pipeline.model_dump_json())
+                    else:
+                        for name in pipeline.order:
+                            print(f"{name}: {pipeline.attempts[name].state}")
+                else:
+                    status = api.status(args.run_id, root=root)
+                    print(status.model_dump_json(indent=None if args.json else 2))
+            except api.MlefError as error:
+                if error.category == "configuration":
+                    raise ValueError(str(error)) from error
+                raise QueryError(error.category, str(error)) from error
+            return 0
         if args.command == "cache":
             from .reuse import verify_source
 
