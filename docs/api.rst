@@ -35,7 +35,8 @@ For supervised execution:
     print(result.id, result.state, result.result.metrics)
 
 
-``init``, ``run``, ``list_runs``, ``status``, ``artifacts``, ``get``, ``compare`` and ``recover``
+``init``, ``run``, ``list_runs``, ``status``, ``pipeline_status``, ``artifacts``, ``get``,
+``compare`` and ``recover``
 reuse the CLI's execution, storage, comparison and recovery services. ``run``,
 ``status`` and ``recover`` return a Pydantic ``RunStatus`` containing run metadata plus
 normalized ``result`` evidence; ``list_runs`` returns ``RunListing(runs, diagnostics)``.
@@ -43,6 +44,13 @@ Artifact listing returns relative names; ``get`` returns the retrieved ``Path``;
 ``compare`` returns the existing ``Comparison`` contract. Use ``model_dump(mode="json")``
 for JSON-compatible output. Version-1/version-2 records use the same read adapters
 as CLI queries. Control options are validated by ``RunOptions`` before execution.
+
+``run()`` defaults to the captured ``mlef.toml`` pipeline; pass a script path for
+legacy single-script execution. ``pipeline_status`` returns a ``PipelineRecord``
+from ``mlef.execution`` without executing code or requiring Docker. Use
+``verify=True`` to check saved source/SDK bytes, completed output inventories and
+input producer wiring, and to reject runs with resource cleanup pending. See
+:doc:`pipelines` for the locked environment requirements and managed script context.
 
 Calls block until execution and finalization finish, and produce no console output.
 Script failures, timeouts and Ctrl+C return their saved failed/cancelled status;
@@ -79,8 +87,11 @@ shorthands, not exported types. Every ``root`` defaults to ``None``.
 .. code-block:: python
 
     init(*, root: Root = None, scaffold: bool = True) -> None
+    pipeline_status(
+        identifier: str, *, root: Root = None, verify: bool = False,
+    ) -> PipelineRecord
     run(
-        script: PathLike, *, root: Root = None,
+        script: PathLike = "mlef.toml", *, root: Root = None,
         arguments: list[str] | None = None,
         includes: list[PathLike] | None = None,
         outputs: list[PathLike] | None = None,

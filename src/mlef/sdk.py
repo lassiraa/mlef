@@ -201,6 +201,7 @@ class LocalContext(Contract):
     _finished: bool = PrivateAttr(default=False)
     _entered: bool = PrivateAttr(default=False)
     _saved: bool = PrivateAttr(default=False)
+    _managed: bool = PrivateAttr(default=False)
     _contract: Step | None = PrivateAttr(default=None)
     _bound: dict[str, ArtifactManifest] = PrivateAttr(default_factory=dict)
     _sources: dict[str, ArtifactSource] = PrivateAttr(default_factory=dict)
@@ -373,13 +374,13 @@ class LocalContext(Contract):
                 self._verify_inputs()
                 for name, manifest in self._artifacts.items():
                     _verify(self.directory.absolute() / "outputs" / name, manifest)
-                result = self._record("running" if self._entered else "complete")
+                result = self._record("running" if self._entered or self._managed else "complete")
                 self._finished = True
                 self._saved = True
             except BaseException as error:
                 self._fail(error)
                 raise
-        return result if self._entered else read_step(self.directory)
+        return result if self._entered or self._managed else read_step(self.directory)
 
     def __enter__(self) -> Self:
         self.prepare()
@@ -409,10 +410,52 @@ class LocalContext(Contract):
                 _output_names(self.directory.absolute(), set(self._artifacts))
                 for name, manifest in self._artifacts.items():
                     _verify(self.directory.absolute() / "outputs" / name, manifest)
-                self._record("complete")
-                read_step(self.directory)
+                self._record("running" if self._managed else "complete")
+                if not self._managed:
+                    read_step(self.directory)
             except BaseException as error:
                 self._fail(error)
                 raise
         self._entered = False
         return False
+
+
+def managed_context(step: Step) -> LocalContext:
+    filename = os.environ.get("MLEF_STEP_CONTEXT")
+    if filename is None:
+        raise ValueError("No pipeline context is assigned; use step.local(...) for local scripts.")
+    context = LocalContext.model_validate_json(Path(filename).read_text(encoding="utf-8"))
+    if context.step != step:
+        raise ValueError("Script declaration does not match the captured pipeline contract.")
+    context._managed = True
+    return context.prepare()
+
+
+def finalize_managed(context: LocalContext) -> StepResult:
+    """Publish only after the script process exits successfully and all bytes verify."""
+    directory = _checked(context.directory.absolute())
+    result = StepResult.model_validate_json(
+        json.dumps(read_json(_checked(directory / "step.json")), allow_nan=False)
+    )
+    if result.state != "running" or result.step != context.step or result.run_id != context.run_id:
+        raise ValueError("Step did not save a pending result for its assigned context.")
+    expected = {}
+    declarations = {item.name: item for item in context.step.inputs}
+    for name, source in context.inputs.items():
+        manifest = read_step(source.directory).artifacts[source.name]
+        declaration = declarations[name]
+        if manifest.type != declaration.type or (
+            declaration.format is not None and manifest.format != declaration.format
+        ):
+            raise ValueError("Input artifact does not match the captured declaration.")
+        expected[name] = manifest.producer
+        _verify(directory / "inputs" / name, manifest)
+    if result.inputs != expected:
+        raise ValueError("Step inputs do not match their assigned producers.")
+    _output_names(directory, set(result.artifacts))
+    for name, manifest in result.artifacts.items():
+        _verify(directory / "outputs" / name, manifest)
+    result.state = "complete"
+    result = StepResult.model_validate_json(result.model_dump_json())
+    _write_result(directory, result)
+    return read_step(directory)

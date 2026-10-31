@@ -46,6 +46,17 @@ def recover(root: Path, identifier: str) -> RunRecord:
                 message="Original runner disappeared; recovery does not establish script success.",
             )
         record.stage = "recovered" if complete else "recovery_incomplete"
+        if record.state != "succeeded":
+            from .execution import interrupt_pipeline
+
+            try:
+                interrupt_pipeline(
+                    run_dir / "artifacts/pipeline",
+                    record.error.message if record.error else "Run was abandoned.",
+                    cancelled=record.state == "cancelled",
+                )
+            except (OSError, ValueError) as error:
+                record.warnings.append(f"Pipeline interruption evidence was not saved: {error}")
         save(run_dir / "result.json", normalize(root, identifier))
         save(run_dir / "run.json", record)
         if not complete:

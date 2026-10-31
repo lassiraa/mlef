@@ -9,6 +9,7 @@ from mlef.benchmark import HoldoutScore, TabularTrial
 from mlef.comparison import Comparison
 from mlef.environment import Environment
 from mlef.evidence import Result
+from mlef.execution import PipelineRecord
 from mlef.metrics import Metrics
 from mlef.pipeline import PipelineDefinition, Step, ValidationReport
 from mlef.records import Experiment, RunRecord
@@ -32,6 +33,7 @@ def main() -> None:
         ("step-result-v1", StepResult),
         ("pipeline-v1", PipelineDefinition),
         ("pipeline-validation-v1", ValidationReport),
+        ("pipeline-run-v1", PipelineRecord),
         ("run-v3", RunRecord),
         ("experiment-v1", Experiment),
         ("result-v1", Result),

@@ -209,7 +209,11 @@ def supervise(request: Request, delivery: Delivery | None = None) -> int:
                         id=request.identifier,
                         state="preparing",
                         created_at=now(),
-                        command=["python", request.script, *request.arguments],
+                        command=(
+                            ["python", "-I", "-m", "mlef.execution", "/outputs/pipeline"]
+                            if Path(request.script).suffix == ".toml"
+                            else ["python", request.script, *request.arguments]
+                        ),
                         outputs=request.outputs,
                         runtime=identity(root, request.identifier, request.token),
                         stage="configuration",
@@ -232,6 +236,14 @@ def supervise(request: Request, delivery: Delivery | None = None) -> int:
                 record.error = RunError(
                     category=category, message=f"{category.capitalize()} during {record.stage}."
                 )
+                from .execution import interrupt_pipeline
+
+                try:
+                    interrupt_pipeline(
+                        run_dir / "artifacts/pipeline", record.error.message, cancelled=cancelled
+                    )
+                except (OSError, ValueError) as error:
+                    record.warnings.append(f"Pipeline interruption evidence was not saved: {error}")
                 save(
                     run_dir / "result.json",
                     Result(

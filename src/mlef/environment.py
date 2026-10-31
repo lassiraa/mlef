@@ -5,12 +5,13 @@ import json
 import platform
 import tomllib
 from pathlib import Path
-from typing import BinaryIO, Literal
+from typing import BinaryIO, Literal, Self
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from . import __version__
 from .processes import command
+from .records import Contract
 
 UV_IMAGE = "ghcr.io/astral-sh/uv:0.13.6"
 INSTALL_COMMAND = [
@@ -139,6 +140,18 @@ class ContainerInfo(SystemInfo):
     uv_version: str | None
 
 
+class SdkWheel(Contract):
+    version: str = Field(pattern=r"^[A-Za-z0-9_.]+$")
+    filename: str = Field(pattern=r"^mlef-[A-Za-z0-9_.]+-py3-none-any\.whl$")
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+
+    @model_validator(mode="after")
+    def filename_version(self) -> Self:
+        if self.filename != f"mlef-{self.version}-py3-none-any.whl":
+            raise ValueError("SDK wheel filename and version disagree.")
+        return self
+
+
 class Environment(BaseModel):
     schema_version: Literal[1] = 1
     mlef_version: str = __version__
@@ -154,6 +167,7 @@ class Environment(BaseModel):
     uv_image: ImageIdentity | None = None
     execution_image: ImageIdentity | None = None
     dependencies: DependencyInputs | None = None
+    sdk_wheel: SdkWheel | None = None
     warnings: list[str] = Field(default_factory=lambda: ["Environment capture is incomplete."])
 
 
@@ -214,7 +228,7 @@ def container_info(
     return ContainerInfo.model_validate_json(query(arguments, log))
 
 
-def build_recipe(base: str, uv: str | None, user: str | None) -> str:
+def build_recipe(base: str, uv: str | None, user: str | None, sdk: SdkWheel | None = None) -> str:
     ownership = f"--chown={user} " if user is not None else ""
     recipe = f"FROM {base}\nWORKDIR /workspace\nCOPY {ownership}workspace/ /workspace/\n"
     if uv is not None:
@@ -222,6 +236,21 @@ def build_recipe(base: str, uv: str | None, user: str | None) -> str:
         recipe += "ENV UV_PROJECT_ENVIRONMENT=/opt/mlef-venv\n"
         recipe += "RUN " + " ".join(INSTALL_COMMAND) + "\n"
         recipe += 'ENV PATH="/opt/mlef-venv/bin:$PATH"\n'
+    if sdk is not None:
+        if uv is None:
+            raise ValueError("Pipeline SDK installation requires a locked experiment environment.")
+        path = f"/opt/mlef-sdk/{sdk.filename}"
+        recipe += "COPY sdk/ /opt/mlef-sdk/\n"
+        recipe += (
+            'RUN python -I -c "import hashlib; from pathlib import Path; '
+            f"assert hashlib.sha256(Path('{path}').read_bytes()).hexdigest() == '{sdk.sha256}'"
+            '"\n'
+        )
+        recipe += (
+            "RUN uv pip install --python /opt/mlef-venv/bin/python --no-deps --no-index "
+            f"--reinstall {path}\n"
+            "RUN uv pip check --python /opt/mlef-venv/bin/python\n"
+        )
     if user is not None:
         recipe += f"RUN chown {user} /workspace\n"
     return recipe
