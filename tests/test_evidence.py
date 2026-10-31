@@ -138,7 +138,7 @@ def test_compatibility_never_invents_a_winner(project: Path, change: str, expect
     assert comparison.metrics[0].observation == "unavailable"
 
 
-def test_missing_legacy_and_zero_baseline(project: Path) -> None:
+def test_missing_evidence_and_zero_baseline(project: Path) -> None:
     first = saved(project, '{"score":0}', specification())
     second = saved(project, '{"score":0.5}', specification())
     row = compare(project, first, second).metrics[0]

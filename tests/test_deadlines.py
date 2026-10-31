@@ -73,7 +73,7 @@ def test_stalled_worker_is_bounded_and_preserves_stage(
     assert phase in saved.error.message
 
 
-def test_version_two_reads_unknown_controls(project: Path) -> None:
+def test_version_two_is_rejected(project: Path) -> None:
     path = project / "run.json"
     path.write_text(
         json.dumps(
@@ -86,10 +86,8 @@ def test_version_two_reads_unknown_controls(project: Path) -> None:
             }
         )
     )
-    record = read_run(path)
-    assert record.schema_version == 3
-    assert record.controls is None
-    assert record.runtime is None
+    with pytest.raises(ValueError, match="Unsupported run schema version: 2"):
+        read_run(path)
 
 
 @pytest.mark.skipif(os.environ.get("MLEF_TEST_DOCKER") != "1", reason="Set MLEF_TEST_DOCKER=1")

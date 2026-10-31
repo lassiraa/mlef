@@ -55,7 +55,7 @@ checks that the source stayed unchanged during copying. Active runs and pending
 resource cleanup are refused. Source, captured SDK, logs, metadata and artifacts
 are copied as-is; ownership locks are excluded. Symlinks, reparse points, hard
 links, traversal, nonportable paths and case-insensitive path collisions are
-rejected. Empty directories and historical run metadata bytes are preserved.
+rejected. Empty directories and current run metadata bytes are preserved.
 
 Each store uses ``runs/RUN/snapshots/SHA256/PATH`` payload keys and a final
 ``runs/RUN/manifest.json`` publication marker. The snapshot identity hashes the

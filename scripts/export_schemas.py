@@ -28,7 +28,7 @@ def main() -> None:
     args = parser.parse_args()
     root = Path(__file__).resolve().parents[1] / "schemas"
     root.mkdir(exist_ok=True)
-    for name, model in [
+    schemas = [
         ("artifact-v1", ArtifactManifest),
         ("custom-type-v1", CustomType),
         ("tabular-bundle-v1", TabularBundle),
@@ -55,7 +55,12 @@ def main() -> None:
         ("tabular-diagnostics-v1", Diagnostics),
         ("tabular-trial-v2", TabularTrial),
         ("holdout-score-v1", HoldoutScore),
-    ]:
+    ]
+    expected = {f"{name}.schema.json" for name, _ in schemas}
+    obsolete = {path.name for path in root.glob("*.schema.json")} - expected
+    if obsolete:
+        raise ValueError(f"Remove obsolete schemas: {', '.join(sorted(obsolete))}")
+    for name, model in schemas:
         content = json.dumps(model.model_json_schema(), indent=2, sort_keys=True) + "\n"
         path = root / f"{name}.schema.json"
         if args.check:

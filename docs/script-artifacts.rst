@@ -5,7 +5,7 @@ Scripts can save typed file and directory artifacts without Git, Docker, an ML
 framework or a storage service. The SDK uses the :doc:`artifacts` contracts and
 :doc:`pipelines` declarations. Captured pipeline execution uses the same SDK
 with explicit runner-assigned contexts and process-exit finalization.
-Existing ``mlef run script.py`` behavior and historical run records are unchanged.
+Single-script execution with ``mlef run script.py`` is also supported.
 
 Local contexts and managed paths
 --------------------------------
@@ -164,7 +164,7 @@ contexts, which cannot observe later process failures after their publication.
 An attempt contains ``step.json``, ``outputs/<output>/`` payloads, optional
 ``inputs/<input>/`` copies and ``active.lock``. ``StepResult`` records schema version,
 run ID, the step contract, state, exact input references, output manifests and an
-optional failure message. It is distinct from historical ``run.json`` records.
+optional failure message. It is distinct from parent ``run.json`` records.
 The structural schema is ``schemas/step-result-v1.schema.json``; Python validation
 also checks required declarations, compatibility and producer identity.
 

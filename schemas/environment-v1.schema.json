@@ -118,16 +118,6 @@
           "title": "Filename",
           "type": "string"
         },
-        "pipeline_cache": {
-          "default": false,
-          "title": "Pipeline Cache",
-          "type": "boolean"
-        },
-        "pipeline_reuse": {
-          "default": false,
-          "title": "Pipeline Reuse",
-          "type": "boolean"
-        },
         "sha256": {
           "pattern": "^[a-f0-9]{64}$",
           "title": "Sha256",
@@ -220,7 +210,7 @@
       "$ref": "#/$defs/SystemInfo"
     },
     "mlef_version": {
-      "default": "0.1.0rc1",
+      "default": "0.1.0",
       "title": "Mlef Version",
       "type": "string"
     },

@@ -135,7 +135,7 @@ def main(argv: list[str] | None = None) -> int:
                 for name in record.order:
                     decision = record.attempts[name].cache
                     print(
-                        f"{name}: unknown (historical evidence)"
+                        f"{name}: unknown (no cache decision recorded)"
                         if decision is None
                         else f"{name}: {decision.action}: {' '.join(decision.reasons)}"
                     )

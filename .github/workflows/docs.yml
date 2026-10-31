@@ -2,18 +2,8 @@ name: Documentation
 
 on:
   pull_request:
-    paths:
-      - "docs/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/docs.yml"
   push:
     branches: [main]
-    paths:
-      - "docs/**"
-      - "pyproject.toml"
-      - "uv.lock"
-      - ".github/workflows/docs.yml"
   workflow_dispatch:
 
 permissions:
@@ -25,6 +15,7 @@ concurrency:
 
 jobs:
   build:
+    timeout-minutes: 10
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -47,6 +38,7 @@ jobs:
           include-hidden-files: true
 
   deploy:
+    timeout-minutes: 10
     if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
     needs: build
     runs-on: ubuntu-latest

@@ -196,17 +196,7 @@ def _save(directory: Path, record: PipelineRecord) -> None:
     record = PipelineRecord.model_validate_json(record.model_dump_json())
     directory = _checked(directory.absolute())
     _checked(directory / "pipeline.tmp")
-    values = record.model_dump(mode="json")
-    if not record.sdk_wheel.pipeline_cache:
-        for name in ("cache_from", "cache_source", "cache_environment"):
-            values.pop(name)
-        values["sdk_wheel"].pop("pipeline_cache")
-        for attempt in values["attempts"].values():
-            attempt.pop("cache")
-        for entry in values["definition"]["steps"]:
-            for name in ("parameters", "cache", "cache_version"):
-                entry.pop(name)
-    save(_checked(directory / "pipeline.json"), values)
+    save(_checked(directory / "pipeline.json"), record.model_dump(mode="json"))
 
 
 def prepare_pipeline(
@@ -235,12 +225,9 @@ def prepare_pipeline(
             for entry in report.definition.steps
         },
     )
-    if sdk.pipeline_cache:
-        from .cache import source_identity
+    from .cache import source_identity
 
-        record.cache_source = source_identity(directory.parents[1] / "source.tar.gz")
-    elif any(entry.parameters for entry in record.definition.steps):
-        raise ValueError("Captured SDK does not support pipeline parameters; fork instead.")
+    record.cache_source = source_identity(directory.parents[1] / "source.tar.gz")
     _checked(directory.absolute()).mkdir(parents=True, exist_ok=False)
     _save(directory, record)
     return record

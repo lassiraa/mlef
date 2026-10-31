@@ -167,8 +167,7 @@ unique row IDs. Prediction labels must agree with that public CSV, not only with
 the reported score. Export reads only that CSV and the named run's saved evidence;
 it never discovers datasets, reads private held-out labels, imports ML libraries
 or deserializes fitted models. Successful execution, complete folds and completed
-resource cleanup are required. Destinations must not exist. Historical version-1
-evaluations are adapted without modifying their source run.
+resource cleanup are required. Destinations must not exist.
 
 A bundle contains ``evaluation.json``, a final ``bundle.json`` publication marker,
 and five completed SDK step directories: ``dataset``, ``split``, ``model``,
@@ -207,14 +206,12 @@ bundle verification, not the existence of an individual directory, as publicatio
 Both binary and regression demo modes now export these bundles under
 ``.mlef/tabular-artifacts/RUN`` for every successful candidate.
 
-New evaluations include a structured ``metric_evidence`` payload in addition to
-legacy numeric ``metrics.json``. Comparison checks scope, definition/version,
+Complete evaluations require a structured ``metric_evidence`` payload in addition to
+numeric ``metrics.json``. Comparison checks scope, definition/version,
 units, aggregation, sample counts, dimensions and parameters after matching the
-actual dataset/folds; equal metric names alone are insufficient. One historical
-run without these declarations and one new run produce ``unknown`` rather than
-an inferred winner. Two historical runs retain the prior built-in comparison.
-Export can reconstruct the built-in ROC AUC/RMSE evidence from verified historical
-folds, but does not invent custom metric definitions or independent attestations.
+actual dataset/folds; equal metric names alone are insufficient. Complete evaluations
+without these declarations are invalid. Export does not invent missing metric
+definitions or independent attestations.
 
 Profiles and agent feedback
 ---------------------------

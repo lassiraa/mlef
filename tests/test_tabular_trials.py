@@ -17,6 +17,17 @@ from mlef.records import read_json
 BENCHMARKS = Path(__file__).resolve().parents[1] / "benchmarks"
 
 
+def test_obsolete_accuracy_trials_are_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.syspath_prepend(str(BENCHMARKS))
+    fixture = importlib.import_module("fixture")
+    path = tmp_path / "trial.json"
+    path.write_text('{"schema_version": 1, "heldout_accuracy": 0.8}', encoding="utf-8")
+    with pytest.raises(ValueError, match="schema_version"):
+        fixture.read_trial(path)
+
+
 @pytest.fixture
 def benchmark(monkeypatch: pytest.MonkeyPatch) -> ModuleType:
     monkeypatch.syspath_prepend(str(BENCHMARKS))

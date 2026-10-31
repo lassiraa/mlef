@@ -5,7 +5,7 @@ These contracts describe evidence. The explicit local SDK in :doc:`script-artifa
 saves and verifies artifacts using these contracts. Captured :doc:`pipelines`
 use the same manifests and verified handoffs. Local/S3 publication is documented
 in :doc:`storage`; arbitrary artifact formats do not imply automatic metric
-calculation. Existing single-script execution and historical readers are unchanged.
+calculation. Single-script execution is also supported.
 
 Artifact manifests
 ------------------
@@ -61,8 +61,8 @@ and serialization; loading models is outside these contracts.
 Optional dataset-byte and sorted-row-ID SHA256 identities and bounded profiles
 extend dataset metadata. Profiles carry rows examined, method and at most 20
 column missing/distinct counts; sampled summaries require a seed and sampled-row
-identity. These extensions are omitted from content identity when absent, so
-historical dataset producer hashes remain valid. See :doc:`tabular` for an
+identity. All declared metadata fields participate in content identity, including
+absent optional values. See :doc:`tabular` for an
 offline exporter that verifies actual rows, split payloads and prediction links.
 
 The type inventory covers files, directories, tables, datasets, splits,
@@ -314,8 +314,7 @@ directory. Pipelines that retain the payload output remain resolvable after the
 original run is removed. A descriptor alone does not package, retain, publish or
 fetch its targets: include the required artifacts in the run or transfer them
 separately. Run publication does not traverse arbitrary external references.
-Existing inline metric JSON and content identities are unchanged; older readers
-cannot parse the new ``external`` variant.
+Inline and external metrics use the same current versioned contract.
 
 Schemas
 -------

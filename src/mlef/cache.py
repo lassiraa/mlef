@@ -165,8 +165,6 @@ def configure_cache(
     force = force or []
     if record.state != "preparing" or record.cache_environment is not None:
         raise ValueError("Cache decisions must be selected once, before pipeline execution.")
-    if not record.sdk_wheel.pipeline_cache:
-        raise ValueError("Captured SDK does not support cache fingerprints; fork instead.")
     if set(force) - set(record.order):
         raise ValueError("Forced steps must name known pipeline steps.")
     if (candidate is None and force) or (candidate is not None and record.reuse_from is not None):

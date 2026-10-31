@@ -42,8 +42,6 @@ def copy_snapshot(root: Path, identifier: str, destination: Path) -> PipelineRec
     source = source_run(root, identifier)
     with run_lock(source):
         record = verify_source(root, identifier)
-        if not record.sdk_wheel.pipeline_reuse:
-            raise ValueError("The captured SDK does not support pipeline reuse; fork instead.")
         for filename in ("source.tar.gz", "changes.patch"):
             shutil.copyfile(_checked(source / filename), destination / filename)
         target = destination / "sdk"

@@ -53,7 +53,7 @@ class Split(Contract):
 
 
 class Protocol(Contract):
-    schema_version: Literal[1, 2] = 2
+    schema_version: Literal[2] = 2
     task: Literal["binary", "regression"] = "binary"
     metric: Literal["roc_auc", "rmse"] = "roc_auc"
     direction: Literal["maximize", "minimize"] = "maximize"
@@ -73,10 +73,8 @@ class Protocol(Contract):
     @model_validator(mode="after")
     def assignments(self) -> Protocol:
         expected = ("roc_auc", "maximize") if self.task == "binary" else ("rmse", "minimize")
-        if (self.metric, self.direction) != expected or (
-            self.schema_version == 1 and self.task != "binary"
-        ):
-            raise ValueError("Task, metric, direction and protocol version must agree.")
+        if (self.metric, self.direction) != expected:
+            raise ValueError("Task, metric and direction must agree.")
         features = self.numeric + self.categorical
         if (
             not features
@@ -274,18 +272,8 @@ def metric_evidence(protocol: Protocol, folds: list[Fold]) -> dict[str, JsonValu
     }
 
 
-def parse_evaluation(values: JsonValue) -> Evaluation:
-    if (
-        isinstance(values, dict)
-        and type(values.get("schema_version")) is int
-        and values.get("schema_version") == 1
-    ):
-        values = {**values, "schema_version": 2}
-    return Evaluation.model_validate(values)
-
-
 class ModelRecipe(Contract):
-    schema_version: Literal[1, 2] = 2
+    schema_version: Literal[2] = 2
     task: Literal["binary", "regression"] = "binary"
     protocol_id: str
     features: list[str]
