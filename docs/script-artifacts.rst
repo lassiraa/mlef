@@ -3,7 +3,8 @@ Saving script artifacts
 
 Scripts can save typed file and directory artifacts without Git, Docker, an ML
 framework or a storage service. The SDK uses the :doc:`artifacts` contracts and
-:doc:`pipelines` declarations. It does not yet schedule or execute a pipeline.
+:doc:`pipelines` declarations. Captured pipeline execution uses the same SDK
+with explicit runner-assigned contexts and process-exit finalization.
 Existing ``mlef run script.py`` behavior and historical run records are unchanged.
 
 Local contexts and managed paths
@@ -141,6 +142,13 @@ There is no hard artifact-size quota or automatic garbage collection.
 
 Records, inspection and example
 -------------------------------
+
+In a captured :doc:`pipeline <pipelines>`, use ``step.context()`` instead of
+``step.local(...)``. It checks the script's declaration against the captured
+contract and resolves only the assigned inputs. Managed saves stay pending until
+the runner verifies the successful exit of the entire script process, even after
+a clean ``with`` exit or an imperative save. This differs from explicit local
+contexts, which cannot observe later process failures after their publication.
 
 An attempt contains ``step.json``, ``outputs/<output>/`` payloads, optional
 ``inputs/<input>/`` copies and ``active.lock``. ``StepResult`` records schema version,

@@ -30,12 +30,15 @@ from .environment import (
     query,
 )
 from .evidence import experiment_spec, normalize
+from .execution import interrupt_pipeline, prepare_pipeline, read_pipeline
 from .limits import Limits, memory_bytes
 from .locking import run_lock
+from .pipeline import validate
 from .processes import BoundedLog, Budget, LogLimitError
 from .processes import command as run_command
 from .provenance import capture, extract_source
 from .records import Controls, RunError, RunRecord
+from .sdk_distribution import capture_sdk
 
 BASE_IMAGE = "python:3.12-slim"
 
@@ -272,8 +275,12 @@ def run(
     )
     script_budget = Budget(max_log_bytes)
     Budget(max_runner_log_bytes)
-    if _identifier is None and any(
-        value is not None for value in [timeout, max_log_bytes, max_runner_log_bytes]
+    pipeline = script.suffix == ".toml"
+    if pipeline and (arguments or outputs or experiment is not None):
+        raise ValueError("Pipelines do not accept script arguments, --output or --experiment.")
+    if _identifier is None and (
+        pipeline
+        or any(value is not None for value in [timeout, max_log_bytes, max_runner_log_bytes])
     ):
         return supervise(
             Request(
@@ -298,6 +305,19 @@ def run(
         raise ValueError(f"Script does not exist or is not a file: {script}")
     for output in outputs:
         relative_path(root, output)
+    if pipeline:
+        report = validate(root, script)
+        if report.status != "verified" or report.definition is None:
+            raise ValueError("Pipeline must validate before execution: " + report.model_dump_json())
+        includes = [
+            *includes,
+            *(Path(entry.script) for entry in report.definition.steps),
+            *(
+                Path(entry.contract)
+                for entry in report.definition.steps
+                if entry.contract is not None
+            ),
+        ]
     files = source_files(root, script, includes)
     specification = experiment_spec(root, experiment) if experiment is not None else None
     run_id = _identifier if _identifier is not None else str(uuid4())
@@ -306,7 +326,11 @@ def run(
     artifacts.mkdir(parents=True)
     for filename in ["stdout.log", "stderr.log", "runner.log"]:
         (run_dir / filename).touch()
-    command = ["python", script.as_posix(), *arguments]
+    command = (
+        ["python", "-I", "-m", "mlef.execution", "/outputs/pipeline"]
+        if pipeline
+        else ["python", script.as_posix(), *arguments]
+    )
     warnings = ["Environment capture is incomplete."]
     metadata = RunRecord(
         id=run_id,
@@ -364,6 +388,25 @@ def run(
                     stage("dependencies")
                     dependencies = dependency_inputs(workspace)
                     environment.dependencies = dependencies
+                    if pipeline:
+                        if dependencies.install_command is None:
+                            raise ValueError(
+                                "Pipelines require pyproject.toml and uv.lock with the SDK runtime "
+                                "dependencies. Use uv add 'pydantic>=2,<3' "
+                                "'typing-extensions>=4.12'."
+                            )
+                        stage("sdk_capture")
+                        environment.sdk_wheel = capture_sdk(run_dir / "sdk")
+                        shutil.copytree(run_dir / "sdk", context / "sdk")
+                        prepare_pipeline(
+                            workspace,
+                            script,
+                            artifacts / "pipeline",
+                            run_id,
+                            inputs.source_sha256,
+                            environment.sdk_wheel,
+                        )
+                        stage("dependencies")
                     inputs.dependency_hashes = dependencies.hashes
                     save(run_dir / "run.json", metadata)
                     save(run_dir / "environment.json", environment.model_dump())
@@ -394,7 +437,12 @@ def run(
                     if hasattr(os, "getuid") and hasattr(os, "getgid"):
                         user = f"{os.getuid()}:{os.getgid()}"
                     (context / "Dockerfile").write_text(
-                        build_recipe(environment.base_image.digests[0], uv_digest, user),
+                        build_recipe(
+                            environment.base_image.digests[0],
+                            uv_digest,
+                            user,
+                            environment.sdk_wheel,
+                        ),
                         encoding="utf-8",
                     )
                     shutil.copy2(context / "Dockerfile", run_dir / "Dockerfile")
@@ -420,6 +468,10 @@ def run(
                     environment.container = container_info(
                         environment.execution_image.id, log, user
                     )
+                if environment.sdk_wheel is not None and (
+                    environment.container.packages.get("mlef") != environment.sdk_wheel.version
+                ):
+                    raise RuntimeError("Execution environment does not contain the captured SDK.")
                 environment.warnings = []
                 warnings.clear()
                 save(run_dir / "environment.json", environment.model_dump())
@@ -508,6 +560,10 @@ def run(
                     )
                 if attach_exit_code:
                     raise RuntimeError("Docker attach failed; experiment logs may be incomplete.")
+                if pipeline:
+                    pipeline_record = read_pipeline(artifacts / "pipeline", verify=True)
+                    if pipeline_record.state != "complete":
+                        raise RuntimeError("Pipeline exited without completing every step.")
                 result = 0
             except KeyboardInterrupt:
                 cancelled = True
@@ -569,6 +625,17 @@ def run(
                     "cancelled" if cancelled else "succeeded" if result == 0 else "failed"
                 )
                 metadata.finished_at = now()
+                if pipeline and result != 0:
+                    try:
+                        interrupt_pipeline(
+                            artifacts / "pipeline",
+                            metadata.error.message if metadata.error else "Pipeline failed.",
+                            cancelled=cancelled,
+                        )
+                    except (OSError, ValueError) as error:
+                        warnings.append(
+                            f"Pipeline interruption evidence could not be saved: {error}"
+                        )
                 try:
                     save(run_dir / "result.json", normalize(root, run_id))
                 except (OSError, ValueError) as error:

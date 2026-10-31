@@ -10,13 +10,16 @@ from uuid import uuid4
 from pydantic import Field
 
 from . import comparison, recovery, storage
+from .environment import file_hash
 from .events import Delivery, LogEvent
 from .evidence import Result, read_result
+from .execution import PipelineRecord, read_pipeline, verify_source_archive
 from .limits import Limits
 from .pipeline import ValidationReport
 from .pipeline import validate as _validate
 from .project import initialize, project_root
 from .records import Contract, RunRecord
+from .sdk import _checked
 from .supervision import Request, supervise
 from .tabular_comparison import TabularComparison
 from .tabular_comparison import compare_tabular as _compare_tabular
@@ -35,6 +38,7 @@ __all__ = [
     "get",
     "init",
     "list_runs",
+    "pipeline_status",
     "recover",
     "run",
     "status",
@@ -95,6 +99,41 @@ def validate(
 @_translated
 def init(*, root: Path | str | None = None, scaffold: bool = True) -> None:
     initialize(project_root(root), scaffold=scaffold)
+
+
+@_translated
+def pipeline_status(
+    identifier: str, *, root: Path | str | None = None, verify: bool = False
+) -> PipelineRecord:
+    resolved = project_root(root)
+    parent = storage.inspect(resolved, identifier)
+    path = storage.artifact_path(resolved, identifier, "pipeline/pipeline.json")
+    try:
+        record = read_pipeline(path.parent, verify=verify)
+    except (OSError, ValueError, KeyError) as error:
+        raise storage.QueryError(
+            "invalid_record", f"Cannot read pipeline evidence: {error}"
+        ) from error
+    if (
+        record.run_id != identifier
+        or parent.inputs is None
+        or record.source_sha256 != parent.inputs.source_sha256
+    ):
+        raise storage.QueryError("invalid_record", "Pipeline does not match its captured run.")
+    if verify:
+        if parent.runtime is not None and parent.runtime.cleanup_pending:
+            raise storage.QueryError("cleanup_pending", "Owned execution resources need recovery.")
+        run_dir = storage.directory(resolved, identifier)
+        try:
+            if (
+                file_hash(_checked(run_dir / "sdk" / record.sdk_wheel.filename))
+                != record.sdk_wheel.sha256
+            ):
+                raise ValueError("Captured SDK wheel bytes changed.")
+            verify_source_archive(run_dir / "source.tar.gz", record)
+        except (OSError, ValueError) as error:
+            raise storage.QueryError("invalid_record", str(error)) from error
+    return record
 
 
 def _status(root: Path, identifier: str) -> RunStatus:
@@ -175,7 +214,7 @@ def recover(identifier: str, *, root: Path | str | None = None) -> RunStatus:
 
 @_translated
 def run(
-    script: Path | str,
+    script: Path | str = "mlef.toml",
     *,
     root: Path | str | None = None,
     arguments: list[str] | None = None,

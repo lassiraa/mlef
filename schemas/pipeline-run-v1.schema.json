@@ -1,0 +1,407 @@
+{
+  "$defs": {
+    "ArtifactType": {
+      "enum": [
+        "file",
+        "directory",
+        "table",
+        "dataset",
+        "split",
+        "predictions",
+        "model",
+        "checkpoint",
+        "metrics",
+        "parameters",
+        "schema",
+        "array",
+        "embeddings",
+        "index",
+        "plot",
+        "report",
+        "text",
+        "image",
+        "audio",
+        "video",
+        "annotations",
+        "explanations",
+        "archive"
+      ],
+      "title": "ArtifactType",
+      "type": "string"
+    },
+    "Input": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/ArtifactType"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "Input",
+      "type": "object"
+    },
+    "Output": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "$ref": "#/$defs/ArtifactType"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "format"
+      ],
+      "title": "Output",
+      "type": "object"
+    },
+    "PipelineDefinition": {
+      "additionalProperties": false,
+      "properties": {
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "steps": {
+          "items": {
+            "$ref": "#/$defs/PipelineStep"
+          },
+          "minItems": 1,
+          "title": "Steps",
+          "type": "array"
+        }
+      },
+      "required": [
+        "steps"
+      ],
+      "title": "PipelineDefinition",
+      "type": "object"
+    },
+    "PipelineStep": {
+      "additionalProperties": false,
+      "properties": {
+        "bindings": {
+          "patternProperties": {
+            "^[A-Za-z][A-Za-z0-9_-]*$": {
+              "type": "string"
+            }
+          },
+          "title": "Bindings",
+          "type": "object"
+        },
+        "contract": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Contract"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "script": {
+          "title": "Script",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "script"
+      ],
+      "title": "PipelineStep",
+      "type": "object"
+    },
+    "SdkWheel": {
+      "additionalProperties": false,
+      "properties": {
+        "filename": {
+          "pattern": "^mlef-[A-Za-z0-9_.]+-py3-none-any\\.whl$",
+          "title": "Filename",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "version": {
+          "pattern": "^[A-Za-z0-9_.]+$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "version",
+        "filename",
+        "sha256"
+      ],
+      "title": "SdkWheel",
+      "type": "object"
+    },
+    "Step": {
+      "additionalProperties": false,
+      "properties": {
+        "inputs": {
+          "items": {
+            "$ref": "#/$defs/Input"
+          },
+          "title": "Inputs",
+          "type": "array"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "outputs": {
+          "items": {
+            "$ref": "#/$defs/Output"
+          },
+          "minItems": 1,
+          "title": "Outputs",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "outputs"
+      ],
+      "title": "Step",
+      "type": "object"
+    },
+    "StepAttempt": {
+      "additionalProperties": false,
+      "properties": {
+        "attempt": {
+          "const": 1,
+          "default": 1,
+          "title": "Attempt",
+          "type": "integer"
+        },
+        "error": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Error"
+        },
+        "exit_code": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Exit Code"
+        },
+        "finished_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Finished At"
+        },
+        "script_sha256": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Script Sha256",
+          "type": "string"
+        },
+        "started_at": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Started At"
+        },
+        "state": {
+          "default": "pending",
+          "enum": [
+            "pending",
+            "running",
+            "complete",
+            "failed",
+            "cancelled",
+            "skipped"
+          ],
+          "title": "State",
+          "type": "string"
+        },
+        "step": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Step",
+          "type": "string"
+        }
+      },
+      "required": [
+        "step",
+        "script_sha256"
+      ],
+      "title": "StepAttempt",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "attempts": {
+      "patternProperties": {
+        "^[A-Za-z][A-Za-z0-9_-]*$": {
+          "$ref": "#/$defs/StepAttempt"
+        }
+      },
+      "title": "Attempts",
+      "type": "object"
+    },
+    "contracts": {
+      "patternProperties": {
+        "^[A-Za-z][A-Za-z0-9_-]*$": {
+          "$ref": "#/$defs/Step"
+        }
+      },
+      "title": "Contracts",
+      "type": "object"
+    },
+    "definition": {
+      "$ref": "#/$defs/PipelineDefinition"
+    },
+    "definition_path": {
+      "title": "Definition Path",
+      "type": "string"
+    },
+    "error": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Error"
+    },
+    "order": {
+      "items": {
+        "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+        "type": "string"
+      },
+      "title": "Order",
+      "type": "array"
+    },
+    "run_id": {
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sdk_wheel": {
+      "$ref": "#/$defs/SdkWheel"
+    },
+    "source_sha256": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Source Sha256",
+      "type": "string"
+    },
+    "state": {
+      "default": "preparing",
+      "enum": [
+        "preparing",
+        "running",
+        "complete",
+        "failed",
+        "cancelled"
+      ],
+      "title": "State",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "source_sha256",
+    "sdk_wheel",
+    "definition_path",
+    "definition",
+    "contracts",
+    "order",
+    "attempts"
+  ],
+  "title": "PipelineRecord",
+  "type": "object"
+}

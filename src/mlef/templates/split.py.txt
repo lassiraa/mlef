@@ -15,10 +15,14 @@ step = Step(
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("directory", type=Path)
+    parser.add_argument("directory", type=Path, nargs="?")
     args = parser.parse_args()
-    inputs = load_artifacts(args.directory / "ingest")
-    with step.local(args.directory / "split", inputs=inputs) as context:
+    context = (
+        step.context()
+        if args.directory is None
+        else step.local(args.directory / "split", inputs=load_artifacts(args.directory / "ingest"))
+    )
+    with context:
         values = json.loads(context.input_path("data", "data.json").read_text(encoding="utf-8"))
         path = context.output_path("partitions")
         (path / "train.json").write_text(json.dumps(values[:4]), encoding="utf-8")

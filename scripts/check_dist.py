@@ -52,6 +52,10 @@ def check(distribution: Path, temporary: Path) -> None:
             str(python),
             "-c",
             "from mlef import api, tabular; from uuid import uuid4; import sys; "
+            "from pathlib import Path; from mlef.sdk_distribution import capture_sdk; "
+            "from mlef.environment import file_hash; "
+            "sdk = capture_sdk(Path('.mlef/sdk')); "
+            "assert file_hash(Path('.mlef/sdk') / sdk.filename) == sdk.sha256; "
             "tabular.export_helper('evaluate.py'); assert 'sklearn' not in sys.modules; "
             "assert callable(api.compare_tabular); assert 'xgboost' not in sys.modules; "
             "assert callable(api.tabular_profile); assert callable(api.tabular_diagnostics); "

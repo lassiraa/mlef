@@ -14,6 +14,8 @@ for argument help.
 
     mlef init
     mlef init --storage-only
+    mlef run
+    mlef run another-pipeline.toml --timeout 180
     mlef run train.py --include data.csv --output results -- --seed 7
     mlef list --json
     mlef status RUN --json
@@ -28,6 +30,12 @@ for argument help.
 ``init`` also creates a :doc:`four-step example <pipelines>` when neither
 ``mlef.toml`` nor ``steps`` exists. Existing scaffold locations are left untouched.
 ``--storage-only`` creates only storage and its ignore entry.
+
+``run`` without a path executes ``mlef.toml``; a ``.toml`` path selects another
+:doc:`captured script pipeline <pipelines>`. Pipeline definitions require a locked
+experiment environment and scripts using ``step.context()``. Script arguments,
+``--output`` and ``--experiment`` apply only to legacy single-script runs, not
+pipelines. Shared run limits and ``--include`` also apply to pipeline runs.
 
 Outputs, cancellation and limits
 --------------------------------

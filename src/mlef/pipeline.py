@@ -66,6 +66,12 @@ class Step(Contract):
     def save(self, artifacts: list[Artifact], *, context: LocalContext) -> StepResult:
         return context.save(self, artifacts)
 
+    def context(self) -> LocalContext:
+        """Open the explicit context assigned to this script by the pipeline runner."""
+        from .sdk import managed_context
+
+        return managed_context(self)
+
 
 class PipelineStep(Contract):
     name: Name

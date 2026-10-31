@@ -1,12 +1,13 @@
-Script pipeline validation
-==========================
+Script pipelines
+================
 
 Pipelines describe named script steps and their typed input/output wiring.
 ``mlef validate`` checks these contracts without importing scripts, executing
 top-level code, installing dependencies or starting Docker. It creates no run
-storage. Existing ``mlef run script.py`` and historical run readers are unchanged.
-Pipeline execution is not yet implemented. Scripts can already save typed outputs
-and bind verified local inputs using the explicit SDK in :doc:`script-artifacts`.
+storage. ``mlef run`` executes ``mlef.toml`` as a captured Docker pipeline;
+``mlef run another.toml`` selects a different definition. Existing
+``mlef run script.py`` and historical run readers are unchanged. Scripts save
+typed outputs and bind verified inputs using :doc:`script-artifacts`.
 
 Start with a script pipeline
 ----------------------------
@@ -47,8 +48,129 @@ For another execution, pass a different fresh parent directory to all four
 commands. Existing attempt directories are never overwritten. These local SDK
 attempts are **not** captured Docker runs and do not appear in ``mlef list``;
 inspect them with ``read_step(Path(".mlef/example/evaluate"))``. Captured pipeline
-execution is separate from this local demonstration. Existing
+execution is described next. Existing
 ``mlef run script.py`` behavior remains unchanged.
+
+Captured Docker execution
+-------------------------
+
+Pipeline scripts use ``with step.context() as context:`` to obtain the explicit
+input bindings and managed output directory assigned by the runner, then call
+``step.save([...], context=context)``. The generated scripts use this mode when
+called without a local directory argument. No context is inferred from a latest
+run or from the current directory; calling ``step.context()`` outside a managed
+pipeline fails. Keep using ``step.local(...)`` for explicit local SDK attempts.
+
+Pipelines require a root ``pyproject.toml`` and existing ``uv.lock`` containing
+the SDK runtime dependencies. In a fresh initialized project, create these with:
+
+.. code-block:: text
+
+    uv init --bare --python 3.12
+    uv add "pydantic>=2,<3" "typing-extensions>=4.12"
+    mlef validate
+    mlef run
+
+For an existing project, use ``uv add`` to add the missing runtime dependencies
+to its own environment instead of replacing its project files or lock. The host
+SDK is separate from experiment dependencies. The container uses Python 3.12, so
+the experiment's Python requirement must allow it. MLEF never updates or resolves
+the experiment lock during execution.
+
+The runner captures the definition, all declared scripts and explicit contract
+files, tracked project files, root dependency inputs and additional ``--include``
+paths in **one** source archive. It revalidates the extracted snapshot, not live
+edited files. It also captures its loaded pure-Python SDK and distribution metadata
+as a deterministic wheel, retains the exact bytes and SHA256, and installs that
+wheel into the locked experiment environment with ``--no-deps --no-index``. The
+build verifies the wheel hash and runs ``uv pip check``; missing or incompatible
+locked runtime dependencies fail preparation rather than triggering resolution.
+The environment probe records installed package versions, including the SDK.
+
+Steps run sequentially in the validated dependency order, as independent Python
+processes within one container and one environment. The runner verifies each
+script's captured hash before launching it. Inputs are verified read-only copies
+from exact completed producers; absent optional outputs leave optional inputs
+unbound. Each step currently has one attempt. There is no parallel scheduler,
+automatic retry, implicit ingestion fallback or artifact reuse in this execution
+path.
+
+A managed save stays pending even after a clean context exit. Only the runner
+publishes it after the **whole script process** exits successfully and required
+outputs, original/staged input bytes, output inventories, contracts and producer
+references verify. This also applies to imperative managed saves without a
+``with`` block. Exceptions, nonzero exits, abrupt termination, missing saves,
+changed declarations or mutated payloads fail the attempt and prevent later
+steps from starting. Completed earlier steps remain diagnostic evidence; partial
+failed outputs are kept but cannot be loaded as reusable artifacts.
+
+The existing supervisor owns the full worker lifetime, including preparation,
+builds and all steps. ``--timeout`` is one wall-clock deadline for the entire run;
+CPU, memory, network and combined log limits apply to the shared container/run.
+Ctrl+C, timeout and explicit recovery preserve available artifacts, fail or cancel
+the active attempt, and mark unstarted steps skipped. Engine failures can leave
+cleanup pending; do not treat last-recorded liveness as proof that work stopped.
+Scripts are trusted, not sandboxed from one another or from their own writable
+artifact storage. Hard artifact quotas and arbitrary delayed-engine work remain
+outside these controls; see :doc:`runs`.
+
+Inspection and example
+----------------------
+
+Parent ``run.json`` records and historical inspection commands are unchanged.
+Pipeline evidence is stored beneath that run's artifact directory:
+
+.. code-block:: text
+
+    .mlef/runs/RUN/
+      source.tar.gz
+      sdk/mlef-VERSION-py3-none-any.whl
+      environment.json
+      artifacts/pipeline/
+        pipeline.json
+        contexts/STEP.json
+        steps/STEP/1/step.json
+        steps/STEP/1/inputs/INPUT/
+        steps/STEP/1/outputs/OUTPUT/
+
+``pipeline.json`` records the captured contracts and wiring, dependency order,
+source/SDK identities and attempt states/timestamps/exit codes. Its schema is
+``schemas/pipeline-run-v1.schema.json``. Pipeline ``complete`` means every step
+finished; the parent run still records any later execution/collection failure.
+Step output manifests use the parent run UUID and declared producer step name.
+Step status markers and script output share the parent's stdout/stderr logs.
+Structured step metrics remain typed artifacts, not legacy root ``metrics.json``
+evidence. Legacy ``compare`` does not infer comparisons between these step metrics.
+
+.. code-block:: text
+
+    mlef status RUN --json
+    mlef get RUN
+    mlef get RUN pipeline/pipeline.json --output pipeline.json
+    mlef get RUN pipeline --output saved-pipeline
+
+From Python, ``api.run()`` defaults to ``mlef.toml``. ``api.pipeline_status(RUN)``
+reads the structural pipeline record and checks its parent run identity without
+executing scripts. ``verify=True`` additionally verifies the source archive,
+captured SDK wheel, complete output inventories and exact input wiring, and
+refuses verification while execution-resource cleanup is pending. Verification
+also revalidates the source archive's definition, contracts and
+script identities against the pipeline record without executing source code.
+Ordinary inspection is read-only; recovery remains an explicit operation.
+
+``examples/pipeline/demo.py`` creates a new Git project, exports the four scripts,
+copies its supplied minimal locked environment and runs the complete Docker
+pipeline through the Python API:
+
+.. code-block:: text
+
+    uv run --locked python examples/pipeline/demo.py ../mlef-pipeline-demo
+
+The destination must not already exist. No ML packages are needed for this toy
+constant-predictor example. Scripts generated by older MLEF versions that require
+a local directory argument must be adapted to use ``step.context()`` before
+running them as a captured pipeline; initialization never overwrites existing
+scripts to do this migration for you.
 
 Script declarations
 -------------------

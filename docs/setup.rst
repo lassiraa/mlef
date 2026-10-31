@@ -45,7 +45,7 @@ From your own project's exact Git root, using your existing script and data:
     mlef run train.py --include data.csv -- --seed 7
 
 ``init`` creates ``.mlef/runs/`` and adds ``/.mlef/`` to ``.gitignore``. If neither
-``mlef.toml`` nor ``steps`` exists, it also creates a :doc:`four-step local SDK
+``mlef.toml`` nor ``steps`` exists, it also creates a :doc:`four-step script
 example <pipelines>`, without overwriting existing project files. Use
 ``mlef init --storage-only`` to omit the example. The runner
 captures tracked files, the script, root dependency files and explicit untracked
