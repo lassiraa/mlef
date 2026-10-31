@@ -1,0 +1,193 @@
+{
+  "$defs": {
+    "ArtifactType": {
+      "enum": [
+        "file",
+        "directory",
+        "table",
+        "dataset",
+        "split",
+        "predictions",
+        "model",
+        "checkpoint",
+        "metrics",
+        "parameters",
+        "schema",
+        "array",
+        "embeddings",
+        "index",
+        "plot",
+        "report",
+        "text",
+        "image",
+        "audio",
+        "video",
+        "annotations",
+        "explanations",
+        "archive"
+      ],
+      "title": "ArtifactType",
+      "type": "string"
+    },
+    "CustomType": {
+      "additionalProperties": false,
+      "description": "A namespaced, versioned semantic identity, independent of executable codecs.",
+      "properties": {
+        "name": {
+          "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)+$",
+          "title": "Name",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "version": {
+          "exclusiveMinimum": 0,
+          "title": "Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "CustomType",
+      "type": "object"
+    },
+    "Input": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "anyOf": [
+            {
+              "minLength": 1,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Format"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactType"
+            },
+            {
+              "$ref": "#/$defs/CustomType"
+            }
+          ],
+          "title": "Type"
+        }
+      },
+      "required": [
+        "name",
+        "type"
+      ],
+      "title": "Input",
+      "type": "object"
+    },
+    "Output": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "minLength": 1,
+          "title": "Format",
+          "type": "string"
+        },
+        "name": {
+          "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+          "title": "Name",
+          "type": "string"
+        },
+        "required": {
+          "default": true,
+          "title": "Required",
+          "type": "boolean"
+        },
+        "type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ArtifactType"
+            },
+            {
+              "$ref": "#/$defs/CustomType"
+            }
+          ],
+          "title": "Type"
+        }
+      },
+      "required": [
+        "name",
+        "type",
+        "format"
+      ],
+      "title": "Output",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "inputs": {
+      "items": {
+        "$ref": "#/$defs/Input"
+      },
+      "title": "Inputs",
+      "type": "array"
+    },
+    "kind": {
+      "default": "generic",
+      "enum": [
+        "generic",
+        "train",
+        "predict",
+        "evaluate"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "name": {
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "outputs": {
+      "items": {
+        "$ref": "#/$defs/Output"
+      },
+      "minItems": 1,
+      "title": "Outputs",
+      "type": "array"
+    },
+    "schema_version": {
+      "default": 1,
+      "enum": [
+        1,
+        2
+      ],
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "name",
+    "outputs"
+  ],
+  "title": "Step",
+  "type": "object"
+}

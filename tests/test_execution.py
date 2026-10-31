@@ -769,7 +769,9 @@ def test_model_catalog_registration_and_retrieval(
     path = project / "steps/train.py"
     path.write_text(
         "from mlef.artifacts import ModelMetadata\n"
-        + path.read_text().replace(
+        + path.read_text()
+        .replace('name="train",', 'schema_version=2, kind="train", name="train",')
+        .replace(
             "path=path)",
             'path=path, metadata=ModelMetadata(framework="constant", serialization="json"))',
         )

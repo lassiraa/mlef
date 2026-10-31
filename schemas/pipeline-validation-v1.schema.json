@@ -241,6 +241,17 @@
           "title": "Inputs",
           "type": "array"
         },
+        "kind": {
+          "default": "generic",
+          "enum": [
+            "generic",
+            "train",
+            "predict",
+            "evaluate"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
         "name": {
           "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
           "title": "Name",
@@ -255,8 +266,11 @@
           "type": "array"
         },
         "schema_version": {
-          "const": 1,
           "default": 1,
+          "enum": [
+            1,
+            2
+          ],
           "title": "Schema Version",
           "type": "integer"
         }
