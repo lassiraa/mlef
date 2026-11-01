@@ -764,6 +764,58 @@ def prepare(project: Path) -> Path:
     return directory
 
 
+def test_model_alias_changes_and_history(
+    project: Path,
+    evaluation_project: Callable[[str], tuple[Path, list[str]]],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    original = prepare(project)
+    assert execute_pipeline(project, original) == 0
+    finish_parent(original)
+    definition, selectors = evaluation_project(original.parents[1].name)
+    first = api.model_version(selectors[0])
+    second = api.model_version(selectors[1])
+    first_path = project / ".mlef/models/constant" / f"{first.version}.json"
+    immutable = first_path.read_bytes()
+    pointer = api.set_model_alias(selectors[0], alias="champion", note="Initial baseline")
+    assert api.model_version("constant:champion") == first
+    assert api.set_model_alias(selectors[0], alias="champion") == pointer
+    moved = api.set_model_alias(selectors[1], alias="champion", note="Selected candidate")
+    assert len(moved.history) == 2
+    assert moved.history[-1].previous_version == first.version
+    assert moved.history[-1].version == second.version
+    assert api.model_version("constant:champion") == second
+    destination = api.get_model("constant:champion", output=project / "champion-model")
+    assert json.loads((destination / "model.json").read_text())["prediction"] == 2
+    with (
+        file_lock(project / ".mlef/models/catalog.lock"),
+        pytest.raises(api.MlefError, match="active"),
+    ):
+        api.set_model_alias(selectors[0], alias="champion")
+    assert api.model_alias("constant:champion") == moved
+    api.set_model_alias(selectors[0], alias="Champion")
+    assert len(api.list_model_aliases("constant").aliases) == 2
+    assert len(api.list_models().versions) == 2
+    capsys.readouterr()
+    assert main(["models", "alias-history", "constant:champion", "--json"]) == 0
+    assert json.loads(capsys.readouterr().out) == moved.model_dump(mode="json")
+    assert first_path.read_bytes() == immutable
+    with pytest.raises(api.MlefError, match="exact"):
+        api.set_model_alias("constant:champion", alias="chain")
+    with pytest.raises(api.MlefError, match="distinct model producers"):
+        api.evaluate(definition, [selectors[0], "constant:Champion"])
+    assert not (project / ".mlef/evaluations").exists()
+    from mlef.models import _alias_path
+
+    path = _alias_path(project, "constant", "champion")
+    broken = moved.model_dump(mode="json")
+    broken["history"][0]["previous_version"] = "f" * 64
+    path.write_text(json.dumps(broken))
+    assert api.list_model_aliases("constant").diagnostics
+    with pytest.raises(api.MlefError, match="history"):
+        api.set_model_alias(selectors[0], alias="champion")
+
+
 @pytest.mark.parametrize(
     ("behavior", "direction", "target"),
     [
@@ -798,9 +850,16 @@ def test_frozen_evaluation_batches(
     path = project / definition
     path.write_text("parameters={" + parameters + "}\n" + path.read_text())
     calls = []
+    candidates = selectors
+    if behavior == "complete" and direction == "minimize":
+        api.set_model_alias(selectors[0], alias="baseline")
+        api.set_model_alias(selectors[1], alias="candidate")
+        candidates = ["constant:baseline", "constant:candidate"]
 
     def execute(request: supervision.Request, delivery: Delivery) -> int:
         calls.append(request.identifier)
+        if len(calls) == 1 and candidates != selectors:
+            api.set_model_alias(selectors[0], alias="candidate")
         if behavior == "cancelled":
             return 130
         target = project / ".mlef/runs" / request.identifier
@@ -842,10 +901,17 @@ def test_frozen_evaluation_batches(
         return code
 
     monkeypatch.setattr("mlef.evaluations.supervise", execute)
-    batch = api.evaluate(definition, selectors)
+    batch = api.evaluate(definition, candidates)
     assert batch.state == behavior
     assert api.evaluation_batch(batch.id) == batch
     assert api.list_evaluations(model=selectors[0]).batches == [batch]
+    if candidates != selectors:
+        assert batch.evaluations[1].model.version == api.model_version(selectors[1]).version
+        assert (
+            api.model_version("constant:candidate").version
+            == api.model_version(selectors[0]).version
+        )
+        assert api.list_evaluations(model="constant:candidate").batches == [batch]
     assert api.list_evaluations(limit=1, offset=1).batches == []
     assert api.list_evaluations(limit=1, offset=1).total == 1
     if behavior == "cancelled":

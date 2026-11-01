@@ -120,15 +120,28 @@ def main(argv: list[str] | None = None) -> int:
     model_register.add_argument("--name", required=True)
     model_register.add_argument("--json", action="store_true")
     model_show = model_commands.add_parser("show")
-    model_show.add_argument("selector", help="MODEL@VERSION")
+    model_show.add_argument("selector", help="MODEL@VERSION or MODEL:ALIAS")
     model_show.add_argument("--json", action="store_true")
+    alias_set = model_commands.add_parser(
+        "alias", help="Assign an exact version to a mutable alias."
+    )
+    alias_set.add_argument("selector", help="MODEL@VERSION")
+    alias_set.add_argument("--alias", required=True)
+    alias_set.add_argument("--note")
+    alias_set.add_argument("--json", action="store_true")
+    alias_list = model_commands.add_parser("aliases")
+    alias_list.add_argument("name")
+    alias_list.add_argument("--json", action="store_true")
+    alias_history = model_commands.add_parser("alias-history")
+    alias_history.add_argument("selector", help="MODEL:ALIAS")
+    alias_history.add_argument("--json", action="store_true")
     model_evaluations = model_commands.add_parser("evaluations")
     model_evaluations.add_argument("selector")
     model_evaluations.add_argument("--limit", type=int, default=50)
     model_evaluations.add_argument("--offset", type=int, default=0)
     model_evaluations.add_argument("--json", action="store_true")
     model_get = model_commands.add_parser("get")
-    model_get.add_argument("selector", help="MODEL@VERSION")
+    model_get.add_argument("selector", help="MODEL@VERSION or MODEL:ALIAS")
     model_get.add_argument("--output", required=True, type=Path)
     history = commands.add_parser("runs", help="Inspect saved run history offline.")
     history_commands = history.add_subparsers(dest="runs_command", required=True)
@@ -340,6 +353,20 @@ def main(argv: list[str] | None = None) -> int:
                         print(batch.model_dump_json(indent=None if args.json else 2))
                     return 0
                 if args.command == "models":
+                    if args.models_command == "alias":
+                        pointer = api.set_model_alias(
+                            args.selector, alias=args.alias, note=args.note, root=root
+                        )
+                        print(pointer.model_dump_json(indent=None if args.json else 2))
+                        return 0
+                    if args.models_command == "aliases":
+                        pointers = api.list_model_aliases(args.name, root=root)
+                        print(pointers.model_dump_json(indent=None if args.json else 2))
+                        return 0
+                    if args.models_command == "alias-history":
+                        pointer = api.model_alias(args.selector, root=root)
+                        print(pointer.model_dump_json(indent=None if args.json else 2))
+                        return 0
                     if args.models_command == "evaluations":
                         batches = api.list_evaluations(
                             root=root, model=args.selector, limit=args.limit, offset=args.offset

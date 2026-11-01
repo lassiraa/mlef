@@ -22,7 +22,7 @@ from .execution import PipelineRecord, read_pipeline, verify_source_archive
 from .inspection import RunMetrics
 from .inspection import run_metrics as _run_metrics
 from .limits import Limits
-from .models import ModelListing, ModelVersion
+from .models import AliasChange, AliasListing, ModelAlias, ModelListing, ModelVersion
 from .pipeline import ValidationReport
 from .pipeline import validate as _validate
 from .project import initialize, project_root
@@ -37,6 +37,8 @@ from .tabular_runtime import Profile
 from .transfers import RunTransfer, backend, fetch, publish
 
 __all__ = [
+    "AliasChange",
+    "AliasListing",
     "EvaluationBatch",
     "EvaluationComparison",
     "EvaluationListing",
@@ -45,6 +47,7 @@ __all__ = [
     "ExperimentListing",
     "LogEvent",
     "MlefError",
+    "ModelAlias",
     "ModelListing",
     "ModelVersion",
     "RunAnnotations",
@@ -71,8 +74,10 @@ __all__ = [
     "init",
     "list_evaluations",
     "list_experiments",
+    "list_model_aliases",
     "list_models",
     "list_runs",
+    "model_alias",
     "model_version",
     "pipeline_status",
     "publish_run",
@@ -82,6 +87,7 @@ __all__ = [
     "run_annotations",
     "run_history",
     "run_metrics",
+    "set_model_alias",
     "status",
     "tabular_diagnostics",
     "tabular_profile",
@@ -296,7 +302,32 @@ def list_evaluations(
 ) -> EvaluationListing:
     from .evaluations import listing
 
-    return listing(project_root(root), model, limit=limit, offset=offset)
+    resolved = project_root(root)
+    if model is not None and ":" in model:
+        version = models.show(resolved, model)
+        model = f"{version.name}@{version.version}"
+    return listing(resolved, model, limit=limit, offset=offset)
+
+
+@_translated
+def set_model_alias(
+    selector: str,
+    *,
+    alias: str,
+    note: str | None = None,
+    root: Path | str | None = None,
+) -> ModelAlias:
+    return models.set_alias(project_root(root), selector, alias, note)
+
+
+@_translated
+def model_alias(selector: str, *, root: Path | str | None = None) -> ModelAlias:
+    return models.read_alias(project_root(root), selector)
+
+
+@_translated
+def list_model_aliases(name: str, *, root: Path | str | None = None) -> AliasListing:
+    return models.aliases(project_root(root), name)
 
 
 @_translated

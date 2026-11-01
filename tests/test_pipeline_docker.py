@@ -38,9 +38,13 @@ def test_real_frozen_multi_model_evaluation(
     trained = api.run()
     assert trained.state == "succeeded"
     definition, models = evaluation_project(trained.id)
-    batch = api.evaluate(definition, models)
+    api.set_model_alias(models[0], alias="baseline")
+    api.set_model_alias(models[1], alias="champion")
+    batch = api.evaluate(definition, ["constant:baseline", "constant:champion"])
     assert batch.state == "complete", batch.model_dump_json()
     assert len(batch.evaluations) == 2
+    api.set_model_alias(models[0], alias="champion")
+    assert batch.evaluations[1].model.version == api.model_version(models[1]).version
     assert [
         item.metrics[0].metrics.values["mae"].model_dump()["value"] for item in batch.evaluations
     ] == [1, 0]

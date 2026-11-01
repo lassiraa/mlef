@@ -58,11 +58,15 @@ Frozen source and recipe identity
 ---------------------------------
 
 Before starting candidates, MLEF resolves 1 through 100 distinct exact model
-versions, captures evaluator source, the definition, dependency files and explicit
+versions (including explicit ``MODEL:ALIAS`` selectors), captures evaluator
+source, the definition, dependency files and explicit
 includes, and captures the loaded SDK wheel. Each candidate receives its own
 generated evaluation-only pipeline inside a frozen source archive. Editing live
 source after preparation does not change later candidates. Training steps are
 not executed by these generated pipelines.
+Aliases resolve to exact versions before candidate snapshots are created.
+Moving an alias later leaves those saved selections unchanged. Distinct selector
+strings that resolve to the same original model producer are rejected.
 
 Each batch records a ``protocol_id`` derived from captured source content/modes,
 SDK bytes and the evaluation specification, including parameters and saved
