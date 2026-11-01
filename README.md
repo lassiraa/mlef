@@ -1,7 +1,8 @@
 # MLEF
 
-Run Python experiments in Docker, keep the evidence, and compare tabular models
-on the same saved folds. Use the CLI yourself or the Python API from an agent.
+Run Python experiments and pipelines in Docker, track runs and model versions,
+and compare saved models with a frozen evaluator. Use the CLI yourself or the
+Python API from an agent.
 
 MLEF keeps source snapshots, locked environments, logs, metrics and artifacts
 together in your Git project's `.mlef/` directory. No account, database or LLM
@@ -48,6 +49,70 @@ copied into a self-contained new run with their original producer references.
 Add `--resume` to use the original captured source and SDK rather than live edits.
 
 ## What makes it useful?
+
+### Track runs, metrics and experiments
+
+Group runs, give them names and tags, and inspect their saved evidence offline:
+
+```text
+mlef run examples/train.py --experiment-name demo --name baseline --tag family=linear
+mlef runs list --experiment demo --state succeeded --limit 20 --json
+mlef runs show RUN --json
+mlef runs metrics RUN --json
+mlef runs annotate RUN --note "Reviewed baseline" --tag reviewed=yes
+mlef experiments show demo --json
+```
+
+History supports state, time, experiment, name and tag filters with pagination.
+Metric queries include root metrics and completed pipeline metric artifacts;
+use `--step`, `--scope` and `--metric` to narrow pipeline results. Labels and
+notes are editable without changing captured evidence. Archive a run with
+`mlef runs annotate RUN --archive` to hide it from history without deleting it.
+See [run tracking](docs/runs.rst).
+
+### Track model versions and compare evaluations
+
+Discover typed model outputs from captured pipelines, register immutable versions,
+and assign aliases such as `baseline` or `champion`:
+
+```text
+mlef models list --run RUN --json
+mlef models register RUN/train/model --name classifier
+mlef models show classifier@VERSION_A --json
+mlef models alias classifier@VERSION_A --alias baseline
+mlef models alias-history classifier:baseline --json
+```
+
+Use a run with a declared model output; the quick-start dummy model is a generic
+file. Replace `RUN/train/model` with its actual run, step and output, and
+`VERSION_A`/`VERSION_B` with hashes returned by registration. Define
+`evaluation.toml` and its evaluator using the [evaluation guide](docs/evaluations.rst),
+then evaluate registered models on explicitly bound saved data:
+
+```text
+mlef evaluate evaluation.toml --model classifier:baseline --model classifier@VERSION_B
+mlef evaluations show BATCH --json
+mlef evaluations leaderboard --batch BATCH --baseline EVAL_A --metric mae --scope test --json
+mlef models evaluations classifier:baseline --json
+mlef models get classifier:baseline --output saved-model
+```
+
+`BATCH` is the returned batch UUID; `EVAL_A` is its baseline child run UUID.
+Choose a metric and scope emitted by your evaluator. Each model runs sequentially
+in its own container with captured evaluator source and exact model/data inputs.
+Moving an alias cannot change a captured selection. Comparisons verify evidence
+and only rank compatible successful scalar results; failed, missing and
+incompatible results remain visible. See [models and aliases](docs/models.rst).
+
+### Build typed pipelines and reuse saved inputs
+
+Declare script inputs and outputs with the SDK, validate their wiring with
+`mlef validate`, and run the pipeline with `mlef run`. Steps can declare `train`,
+`predict` and `evaluate` roles, with model/data/prediction lineage checked when
+outputs are saved. Exact cross-run bindings let an evaluator consume existing
+models and datasets without repeating training. Explicit reuse, resume and
+opt-in caching retain the original artifact producers in each new run.
+See [script pipelines](docs/pipelines.rst) and the [artifact SDK](docs/script-artifacts.rst).
 
 ### Keep results when an experiment fails
 
@@ -117,10 +182,10 @@ The documentation sources are linked below.
 | [Artifact contracts](docs/artifacts.rst) | Versioned manifests, custom codecs and inline/external metric evidence |
 | [Script pipelines](docs/pipelines.rst) | Captured execution, explicit reuse/resume and explainable opt-in caching |
 | [Script artifact SDK](docs/script-artifacts.rst) | Managed outputs, atomic saves and verified read-only input handoff |
-| [Python API](docs/api.rst) | Signatures, options, returns, errors and output callbacks |
-| [Run and CLI reference](docs/runs.rst) | Commands, limits, provenance, retrieval and recovery |
-| [Models](docs/models.rst) | Discover, register, inspect and retrieve exact model versions |
-| [Evaluation batches](docs/evaluations.rst) | Evaluate saved models with frozen source and inspect results |
+| [Python API](docs/api.rst) | Execution, tracking, model and evaluation APIs, errors and callbacks |
+| [Run and CLI reference](docs/runs.rst) | Filtered history, experiment groups, annotations, metrics and recovery |
+| [Models](docs/models.rst) | Discover and register versions, retrieve models, manage aliases and history |
+| [Evaluation batches](docs/evaluations.rst) | Frozen multi-model evaluation, verified comparisons and leaderboards |
 | [Run storage](docs/storage.rst) | Verified local/S3 publication, retrieval, retries and credentials |
 | [Agent benchmarks](docs/benchmarks.rst) | Matched trials, private scoring and reporting |
 | [Development](docs/development.rst) | Checks, schemas, packaging and contributions |

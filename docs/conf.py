@@ -16,6 +16,6 @@ html_theme_options = {
     "github_user": "lassiraa",
     "github_repo": "mlef",
     "github_banner": True,
-    "description": "Reproducible Python experiments and tabular model feedback",
+    "description": "Reproducible experiments, run tracking and model evaluation",
 }
 html_sidebars = {"**": ["about.html", "navigation.html", "relations.html", "searchbox.html"]}

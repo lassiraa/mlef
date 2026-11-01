@@ -45,7 +45,7 @@ The existing SDK save rules apply. The initializer's toy model is deliberately a
 generic JSON file and does not appear as a typed model. Filenames, model
 references in metric payloads and legacy script files do not automatically
 establish a model contract. Standalone script outputs and local SDK attempts
-are not cataloged by this initial implementation.
+are not cataloged.
 
 Registration and evidence
 -------------------------
@@ -78,10 +78,8 @@ the retrieved inventory. Existing destinations are refused.
 Versions reference existing run storage; they do not duplicate model bytes.
 Deleting or moving the containing run can make retrieval unavailable while the
 descriptor remains inspectable. Existing run publish/fetch does not transfer the
-model catalog; catalog portability and reference-protected deletion
-remain planned platform features. :doc:`evaluations` records batch history by
-exact model selector. No command in
-this initial catalog deletes models or runs.
+model catalog. :doc:`evaluations` records batch history by exact model selector.
+Model commands do not delete models or runs.
 
 Model aliases and change history
 --------------------------------
@@ -128,6 +126,8 @@ immutable version records remain unchanged. Current pointers and their history
 live in ``.mlef/models/NAME/aliases/HASH.json``.
 
 .. code-block:: python
+
+    from mlef import api
 
     pointer = api.set_model_alias(
         "churn-classifier@VERSION_B", alias="champion", note="Selected candidate",

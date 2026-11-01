@@ -4,6 +4,9 @@ Python API reference
 :doc:`Documentation home <index>`
 
 Python callers can use the supported synchronous ``mlef.api`` entry points.
+The API covers execution, run history and annotations, experiment groups, model
+versions and aliases, evaluation batches, metrics and comparisons. Inspection
+works offline without Docker or ML dependencies; execution uses Docker.
 For non-executing script contract and wiring checks, see ``api.validate`` in
 :doc:`pipelines`. It returns a versioned validation report without requiring
 initialized run storage or Docker.
@@ -112,6 +115,8 @@ shorthands, not exported types. Every ``root`` defaults to ``None``.
         reuse_from: str | None = None, from_step: str | None = None,
         resume: bool = False, cache_from: str | None = None,
         force: list[str] | None = None,
+        name: str | None = None, experiment_name: str | None = None,
+        tags: dict[str, str] | None = None, note: str | None = None,
     ) -> RunStatus
     status(identifier: str, *, root: Root = None) -> RunStatus
     list_runs(*, root: Root = None) -> RunListing
@@ -136,6 +141,133 @@ integers. ``network`` accepts ``"default"`` or ``"none"``. See the
 declared experiment compatibility. ``limit`` ranges from 1 to 100;
 ``minimum_count`` ranges from 2 to 1,000,000. Tabular inspection is offline.
 See the :doc:`tabular guide <tabular>` for score definitions and interpretation.
+
+Run tracking and experiment groups
+----------------------------------
+
+``run_history`` returns a version-2 ``RunHistory`` envelope with runs, annotations,
+diagnostics, total matching records and the next offset. Filters apply before
+pagination; archived runs are hidden by default. ``run_metrics`` returns root
+result evidence and qualified pipeline metric artifacts without implicitly
+ranking or reducing their payloads. See :doc:`runs` for filter semantics,
+annotation limits and verification boundaries.
+
+.. code-block:: python
+
+    run_history(
+        *, state: Literal["preparing", "running", "succeeded", "failed", "cancelled"] | None = None,
+        since: str | None = None, limit: int = 50, offset: int = 0,
+        experiment: str | None = None, name: str | None = None,
+        tags: dict[str, str] | None = None, include_archived: bool = False,
+        root: Root = None,
+    ) -> RunHistory
+    run_metrics(
+        identifier: str, *, step: str | None = None, scope: str | None = None,
+        metric: str | None = None, max_bytes: int = 33554432, root: Root = None,
+    ) -> RunMetrics
+    run_annotations(identifier: str, *, root: Root = None) -> RunAnnotations
+    annotate_run(
+        identifier: str, *, name: str | None = None, experiment: str | None = None,
+        note: str | None = None, tags: dict[str, str] | None = None,
+        remove_tags: list[str] | None = None, archived: bool | None = None,
+        clear_name: bool = False, clear_note: bool = False,
+        clear_experiment: bool = False, root: Root = None,
+    ) -> RunAnnotations
+    create_experiment(
+        name: str, *, description: str | None = None, root: Root = None,
+    ) -> ExperimentGroup
+    list_experiments(*, root: Root = None) -> ExperimentListing
+    experiment_group(name: str, *, root: Root = None) -> ExperimentGroup
+    experiment_details(
+        name: str, *, limit: int = 50, offset: int = 0,
+        include_archived: bool = False, root: Root = None,
+    ) -> ExperimentDetails
+
+``experiment_group`` reads group metadata; ``experiment_details`` also returns
+paged run history. ``run(experiment_name=...)`` assigns a group, while
+``run(experiment=...)`` captures the separate immutable experiment-intent file.
+Annotations live outside captured run evidence. Omitted annotation fields are
+preserved, tags merge by key, and explicit clear/remove arguments delete labels.
+
+.. code-block:: python
+
+    from mlef import api
+
+    page = api.run_history(experiment="Churn models", tags={"family": "linear"})
+    for record in page.runs:
+        print(record.id, record.state, page.annotations[record.id].name)
+        metrics = api.run_metrics(record.id)
+    api.annotate_run(run_id, note="Reviewed", tags={"reviewed": "yes"})
+
+Models and aliases
+------------------
+
+``list_models(run_id=...)`` discovers typed completed model outputs, including
+unregistered artifacts; omitting ``run_id`` lists registered versions.
+Registration is idempotent for the same name and original producer. Version
+descriptors are immutable, and retrieval verifies and copies saved model bytes
+without deserializing them. See :doc:`models` for contracts and storage details.
+
+.. code-block:: python
+
+    list_models(*, run_id: str | None = None, root: Root = None) -> ModelListing
+    register_model(
+        identifier: str, step: str, output: str, *, name: str, root: Root = None,
+    ) -> ModelVersion
+    model_version(selector: str, *, root: Root = None) -> ModelVersion
+    get_model(selector: str, *, output: PathLike, root: Root = None) -> Path
+    set_model_alias(
+        selector: str, *, alias: str, note: str | None = None, root: Root = None,
+    ) -> ModelAlias
+    model_alias(selector: str, *, root: Root = None) -> ModelAlias
+    list_model_aliases(name: str, *, root: Root = None) -> AliasListing
+
+Selectors use ``MODEL@VERSION`` for exact versions or ``MODEL:ALIAS`` for mutable
+pointers. ``set_model_alias`` requires an exact version; ``model_alias`` reads an
+alias and its complete change history. ``model_version`` and ``get_model`` accept
+either selector. Existing retrieval destinations are refused.
+
+Evaluation batches and comparisons
+----------------------------------
+
+``evaluate`` resolves model selectors to exact versions, freezes the evaluator
+source/SDK and creates a sequential batch of normal child runs. Its returned
+``EvaluationBatch`` retains each candidate's state, run ID and metric summaries.
+Inspect the batch state for partial failures or cancellation. See
+:doc:`evaluations` for definition syntax, outcomes and comparison requirements.
+
+.. code-block:: python
+
+    evaluate(
+        definition: PathLike, models: list[str], *, options: RunOptions | None = None,
+        root: Root = None,
+    ) -> EvaluationBatch
+    evaluation_batch(identifier: str, *, root: Root = None) -> EvaluationBatch
+    list_evaluations(
+        *, model: str | None = None, limit: int = 50, offset: int = 0,
+        root: Root = None,
+    ) -> EvaluationListing
+    compare_evaluations(
+        identifiers: list[str], *, baseline: str, metric: str,
+        scope: str | None = None, output: str | None = None, root: Root = None,
+    ) -> EvaluationComparison
+    evaluation_leaderboard(
+        batch_id: str, *, baseline: str, metric: str,
+        scope: str | None = None, output: str | None = None, root: Root = None,
+    ) -> EvaluationComparison
+
+``evaluation_batch`` takes a batch UUID; comparison identifiers and ``baseline``
+are child run UUIDs. ``output`` qualifies the metric artifact's output name.
+``list_evaluations(model=...)`` filters batches by exact version or the current
+target of an alias. Comparisons reverify child evidence; only compatible,
+successful scalar results with a declared direction are eligible for ranking.
+Inspect row compatibility and eligibility, since a valid query can contain
+unranked results.
+
+Use ``compare`` for legacy root metrics and declared experiment intent,
+``compare_evaluations`` for frozen saved-model evaluations, and
+``compare_tabular`` for the specialized saved-fold training workflow. These
+operations retain their distinct evidence and compatibility rules.
 
 Portable tabular helper and contracts
 -------------------------------------
