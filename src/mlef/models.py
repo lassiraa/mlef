@@ -3,7 +3,7 @@
 import hashlib
 import json
 from pathlib import Path
-from typing import Literal, Self
+from typing import Annotated, Literal, Self
 
 from pydantic import Field, field_validator, model_validator
 
@@ -51,6 +51,42 @@ class ModelListing(Contract):
     schema_version: Literal[1] = 1
     artifacts: list[ModelArtifact] = Field(default_factory=list)
     versions: list[ModelVersion] = Field(default_factory=list)
+    diagnostics: list[str] = Field(default_factory=list)
+
+
+VersionHash = Annotated[str, Field(pattern=r"^[a-f0-9]{64}$")]
+AliasName = Annotated[Name, Field(max_length=64)]
+
+
+class AliasChange(Contract):
+    previous_version: VersionHash | None
+    version: VersionHash
+    changed_at: str
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class ModelAlias(Contract):
+    schema_version: Literal[1] = 1
+    name: Name
+    alias: AliasName
+    version: VersionHash
+    history: list[AliasChange] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def consistent(self) -> Self:
+        previous = None
+        for change in self.history:
+            if change.previous_version != previous:
+                raise ValueError("Alias history must retain a consistent version chain.")
+            previous = change.version
+        if previous != self.version:
+            raise ValueError("Alias target must match the final recorded change.")
+        return self
+
+
+class AliasListing(Contract):
+    schema_version: Literal[1] = 1
+    aliases: list[ModelAlias] = Field(default_factory=list)
     diagnostics: list[str] = Field(default_factory=list)
 
 
@@ -165,6 +201,9 @@ def register(root: Path, identifier: str, step: str, output: str, name: str) -> 
 
 
 def show(root: Path, selector: str) -> ModelVersion:
+    if ":" in selector:
+        record = read_alias(root, selector)
+        return show(root, f"{record.name}@{record.version}")
     name, separator, version = selector.partition("@")
     if (
         not separator
@@ -203,3 +242,75 @@ def get(root: Path, selector: str, destination: Path) -> Path:
         )
         _verify(copied, artifact.manifest)
         return copied
+
+
+def _alias_path(root: Path, name: str, alias: str) -> Path:
+    from pydantic import TypeAdapter
+
+    validated = TypeAdapter(AliasName).validate_python(alias)
+    identity = hashlib.sha256(validated.encode("utf-8")).hexdigest()
+    return _checked(_catalog(root) / _name(name) / "aliases" / f"{identity}.json")
+
+
+def _read_alias(path: Path) -> ModelAlias:
+    record = ModelAlias.model_validate(read_json(_checked(path)))
+    identity = hashlib.sha256(record.alias.encode("utf-8")).hexdigest()
+    if record.name != path.parent.parent.name or path.stem != identity:
+        raise ValueError("Alias identity does not match its catalog location.")
+    return record
+
+
+def read_alias(root: Path, selector: str) -> ModelAlias:
+    name, separator, alias = selector.partition(":")
+    if not separator:
+        raise ValueError("Expected MODEL:ALIAS.")
+    path = _alias_path(root, name, alias)
+    if not path.exists():
+        raise storage.QueryError("unknown_alias", f"Unknown model alias: {selector}")
+    try:
+        record = _read_alias(path)
+        if record.alias != alias:
+            raise ValueError("Alias identity does not match the requested selector.")
+        return record
+    except (OSError, ValueError) as error:
+        raise storage.QueryError("invalid_record", f"Cannot read model alias: {error}") from error
+
+
+def aliases(root: Path, name: str) -> AliasListing:
+    directory = _checked(_catalog(root) / _name(name) / "aliases")
+    result = AliasListing()
+    if directory.exists():
+        for path in sorted(directory.glob("*.json")):
+            try:
+                result.aliases.append(_read_alias(path))
+            except (OSError, ValueError) as error:
+                result.diagnostics.append(f"{path.name}: {error}")
+    result.aliases.sort(key=lambda item: item.alias)
+    return result
+
+
+def set_alias(root: Path, selector: str, alias: str, note: str | None = None) -> ModelAlias:
+    from .runner import now, save
+
+    if ":" in selector:
+        raise ValueError("Alias assignment requires an exact MODEL@VERSION target.")
+    version = show(root, selector)
+    path = _alias_path(root, version.name, alias)
+    change = AliasChange(
+        previous_version=None, version=version.version, changed_at=now(), note=note
+    )
+    with file_lock(_checked(_catalog(root) / "catalog.lock")):
+        existing = read_alias(root, f"{version.name}:{alias}") if path.exists() else None
+        if existing is not None and existing.version == version.version:
+            return existing
+        history = list(existing.history) if existing is not None else []
+        change.previous_version = existing.version if existing is not None else None
+        history.append(change)
+        record = ModelAlias(
+            name=version.name, alias=alias, version=version.version, history=history
+        )
+        # ponytail: rewrite inline history per human edit; split a journal if its size matters.
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _checked(path.with_suffix(".tmp"))
+        save(path, record)
+        return record

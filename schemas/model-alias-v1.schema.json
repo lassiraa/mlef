@@ -1,0 +1,91 @@
+{
+  "$defs": {
+    "AliasChange": {
+      "additionalProperties": false,
+      "properties": {
+        "changed_at": {
+          "title": "Changed At",
+          "type": "string"
+        },
+        "note": {
+          "anyOf": [
+            {
+              "maxLength": 2000,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Note"
+        },
+        "previous_version": {
+          "anyOf": [
+            {
+              "pattern": "^[a-f0-9]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Previous Version"
+        },
+        "version": {
+          "pattern": "^[a-f0-9]{64}$",
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "previous_version",
+        "version",
+        "changed_at"
+      ],
+      "title": "AliasChange",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "alias": {
+      "maxLength": 64,
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+      "title": "Alias",
+      "type": "string"
+    },
+    "history": {
+      "items": {
+        "$ref": "#/$defs/AliasChange"
+      },
+      "minItems": 1,
+      "title": "History",
+      "type": "array"
+    },
+    "name": {
+      "pattern": "^[A-Za-z][A-Za-z0-9_-]*$",
+      "title": "Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "version": {
+      "pattern": "^[a-f0-9]{64}$",
+      "title": "Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "name",
+    "alias",
+    "version",
+    "history"
+  ],
+  "title": "ModelAlias",
+  "type": "object"
+}

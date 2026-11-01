@@ -8,8 +8,8 @@ root/pipeline metric inspection, model discovery and immutable registration,
 typed step roles with runtime lineage checks, exact cross-run inputs and
 sequential model batches with frozen evaluation recipes, verified comparisons
 and scalar leaderboards. Named experiment groups, editable run labels/tags/notes
-and archival are also implemented. Model aliases and retry/reconciliation
-commands remain planned.
+and archival are also implemented, along with model aliases and their change
+history. Retry/reconciliation commands remain planned.
 This proposal extends the local, file-backed execution model.
 
 The intended workflow is: find previous experiments, inspect their models and

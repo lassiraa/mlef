@@ -203,6 +203,8 @@ def evaluate(
     if spec.model_input in spec.bindings:
         raise ValueError("The model input is assigned by the candidate selection.")
     versions = [model_version(root, selector) for selector in selectors]
+    if len({version.version for version in versions}) != len(versions):
+        raise ValueError("Candidate selectors must resolve to distinct model producers.")
     files = source_files(
         root,
         Path(spec.script),

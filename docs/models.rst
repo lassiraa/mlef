@@ -78,10 +78,66 @@ the retrieved inventory. Existing destinations are refused.
 Versions reference existing run storage; they do not duplicate model bytes.
 Deleting or moving the containing run can make retrieval unavailable while the
 descriptor remains inspectable. Existing run publish/fetch does not transfer the
-model catalog; catalog portability, aliases and reference-protected deletion
+model catalog; catalog portability and reference-protected deletion
 remain planned platform features. :doc:`evaluations` records batch history by
 exact model selector. No command in
 this initial catalog deletes models or runs.
+
+Model aliases and change history
+--------------------------------
+
+Use aliases to give selected versions stable human names:
+
+.. code-block:: text
+
+    mlef models alias churn-classifier@VERSION_A --alias baseline --note "Initial baseline"
+    mlef models alias churn-classifier@VERSION_B --alias champion --note "Selected after evaluation"
+    mlef models show churn-classifier:champion --json
+    mlef models get churn-classifier:champion --output selected-model
+    mlef models aliases churn-classifier --json
+    mlef models alias-history churn-classifier:champion --json
+    mlef models evaluations churn-classifier:champion --json
+
+Exact versions retain ``MODEL@VERSION`` syntax. Alias selectors use
+``MODEL:ALIAS`` and resolve directly to one registered version; there are no
+alias chains or implicit latest-version searches. Assignment requires an exact
+version selector. Alias names use the step/model naming characters and may have
+at most 64 characters. Names are case-sensitive, with hashed filenames for
+consistent filesystem behavior across platforms.
+
+Each actual target change records the previous version, new version, UTC change
+time and optional note (up to 2000 characters). Assigning the current target
+again is idempotent and does not append a new event or revise its note. The API
+preserves the history when moving a pointer, including moving back to a previous
+version. Atomic writes under the existing model catalog lock publish target and
+history together. Identity/chain corruption is reported instead of silently
+resetting history. Alias queries create no catalog files.
+
+``model_version`` and ``get_model`` resolve an alias once per call. Evaluation
+batches resolve all selectors before capturing candidate source/SDK snapshots
+and store exact ``ModelVersion`` records. Moving an alias during or after a batch
+cannot change its selected weights, references or results. Selectors that resolve
+to the same model producer are rejected as duplicate batch candidates. History
+filtered by an alias uses its current target at query time; use an exact selector
+from the change history to inspect an earlier version.
+
+Aliases update local catalog metadata. Assignment checks the registered version
+descriptor; retrieval and execution retain their normal saved-byte/source
+verification. Alias catalogs are not included in run publish/fetch, and existing
+immutable version records remain unchanged. Current pointers and their history
+live in ``.mlef/models/NAME/aliases/HASH.json``.
+
+.. code-block:: python
+
+    pointer = api.set_model_alias(
+        "churn-classifier@VERSION_B", alias="champion", note="Selected candidate",
+    )
+    selected = api.model_version("churn-classifier:champion")
+    history = api.model_alias("churn-classifier:champion")
+    aliases = api.list_model_aliases("churn-classifier")
+
+The returned pointer includes its complete history. Schemas are exported as
+``model-alias-v1`` and ``model-alias-listing-v1``.
 
 Python API
 ----------
