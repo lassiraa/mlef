@@ -1,9 +1,11 @@
 MLEF documentation
 ==================
 
-Run Python experiments in Docker, preserve their evidence, and compare sklearn
-and XGBoost models on the same saved folds. Use the CLI yourself or the Python API
-from an agent. No account, database or LLM provider is required.
+Run Python experiments and pipelines in Docker, track runs and model versions,
+and compare saved models with a frozen evaluator. Use the CLI yourself or the
+Python API from an agent. Source snapshots, environments, logs, metrics and
+artifacts stay in your Git project's ``.mlef/`` directory. No account, database
+or LLM provider is required.
 
 Quick start
 -----------
@@ -33,9 +35,22 @@ What can you do with it?
 ------------------------
 
 * Keep source, locked environments, logs, metrics and outputs together, including
-  partial outputs after failure. See :doc:`runs`.
+  partial outputs after failure. Filter run history, group experiments, edit
+  labels/tags/notes and archive runs without deleting them. See :doc:`runs`.
+* Build typed pipelines with training, prediction and evaluation roles, verified
+  cross-run inputs, explicit reuse/resume and opt-in caching. See :doc:`pipelines`
+  and :doc:`script-artifacts`.
+* Discover model artifacts, register immutable versions, retrieve verified model
+  bytes and manage aliases with change history. See :doc:`models`.
+* Evaluate saved models sequentially with frozen source and data bindings, inspect
+  per-model outcomes, and compare compatible scalar results in a leaderboard.
+  See :doc:`evaluations`.
+* Inspect root and pipeline metrics offline, preserving their scope and artifact
+  references. See :doc:`runs` and :doc:`artifacts`.
 * Compare baseline/candidate sklearn and XGBoost models on saved folds, refit the
   selected model and retrieve predictions. See :doc:`tabular`.
+* Publish and fetch self-contained terminal runs through local directories or
+  S3 with integrity checks. See :doc:`storage`.
 * Give agents bounded profiles, comparison results and error slices through
   :doc:`api`. See :doc:`benchmarks` for independent final scoring.
 
@@ -49,18 +64,17 @@ Guides and reference
    :maxdepth: 2
 
    setup
-   tabular
-   api
-   artifacts
-   pipelines
-   script-artifacts
    runs
    models
    evaluations
+   pipelines
+   script-artifacts
+   artifacts
+   tabular
+   api
    storage
    benchmarks
    development
-   platform-proposal
 
 `Source repository <https://github.com/lassiraa/mlef>`_ ·
 `Apache-2.0 license <https://github.com/lassiraa/mlef/blob/main/LICENSE>`_

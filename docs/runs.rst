@@ -93,6 +93,9 @@ paged history envelope as ``experiments show``. Schemas include
 ``experiment-group-v1``, ``experiment-listing-v1``, ``experiment-details-v1`` and
 ``run-annotations-v1``.
 
+Metric inspection
+~~~~~~~~~~~~~~~~~
+
 Inspect root and completed pipeline metric evidence together:
 
 .. code-block:: text
@@ -117,6 +120,9 @@ or I/O quota; inventory verification still reads saved output bytes. External
 metric references remain compact and are never resolved automatically. These
 queries do not verify source archives or rerun evaluators; use
 ``api.pipeline_status(RUN, verify=True)`` for full captured-source verification.
+
+Execution and storage commands
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Run commands from the experiment's Git root. Replace RUN, BASELINE and CANDIDATE
 with complete UUID4 identifiers printed by MLEF. Use ``mlef COMMAND --help``
@@ -253,8 +259,8 @@ also records dependency and Dockerfile hashes. Capture failures prevent executio
 and retain an incomplete-environment warning. Host environment variables are not
 collected. Recorded images and packages still need to be available for a rebuild;
 datasets, network responses and nondeterminism remain the caller's responsibility.
-Background execution is still planned. Experiment code has network access by
-default and can write to its artifact mount.
+Execution runs in the foreground. Experiment code has network access by default
+and can write to its artifact mount.
 
 Offline inspection and artifact retrieval
 -----------------------------------------
